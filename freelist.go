@@ -9,12 +9,18 @@ import (
 // freelist represents a list of all pages that are available for allocation.
 // It also tracks pages that have been freed but are still in use by open transactions.
 type freelist struct {
+    // 页ID 列表
 	ids     []pgid          // all free and available free page ids.
+
+    // 记录事务使用的页
 	pending map[txid][]pgid // mapping of soon-to-be free page ids by tx.
+
+    // 事务页缓存
 	cache   map[pgid]bool   // fast lookup of all free and pending page ids.
 }
 
 // newFreelist returns an empty, initialized freelist.
+// 创建函数
 func newFreelist() *freelist {
 	return &freelist{
 		pending: make(map[txid][]pgid),
@@ -29,6 +35,7 @@ func (f *freelist) size() int {
 		// The first element will be used to store the count. See freelist.write.
 		n++
 	}
+
 	return pageHeaderSize + (int(unsafe.Sizeof(pgid(0))) * n)
 }
 
@@ -45,20 +52,27 @@ func (f *freelist) free_count() int {
 // pending_count returns count of pending pages
 func (f *freelist) pending_count() int {
 	var count int
+
 	for _, list := range f.pending {
 		count += len(list)
 	}
+
 	return count
 }
 
 // copyall copies into dst a list of all free ids and all pending ids in one sorted list.
 // f.count returns the minimum length required for dst.
 func (f *freelist) copyall(dst []pgid) {
+    // 临时对象
 	m := make(pgids, 0, f.pending_count())
+
+    // 取pending，做排序
 	for _, list := range f.pending {
 		m = append(m, list...)
 	}
 	sort.Sort(m)
+
+    // 合并
 	mergepgids(dst, f.ids, m)
 }
 
@@ -66,12 +80,14 @@ func (f *freelist) copyall(dst []pgid) {
 // If a contiguous block cannot be found then 0 is returned.
 func (f *freelist) allocate(n int) pgid {
 	if len(f.ids) == 0 {
+	    // 无空间可用
 		return 0
 	}
 
 	var initial, previd pgid
 	for i, id := range f.ids {
 		if id <= 1 {
+		    // 异常id
 			panic(fmt.Sprintf("invalid page allocation: %d", id))
 		}
 
@@ -103,6 +119,7 @@ func (f *freelist) allocate(n int) pgid {
 
 		previd = id
 	}
+
 	return 0
 }
 
@@ -239,11 +256,13 @@ func (f *freelist) reload(p *page) {
 }
 
 // reindex rebuilds the free cache based on available and pending free lists.
+// 重建索引
 func (f *freelist) reindex() {
 	f.cache = make(map[pgid]bool, len(f.ids))
 	for _, id := range f.ids {
 		f.cache[id] = true
 	}
+
 	for _, pendingIDs := range f.pending {
 		for _, pendingID := range pendingIDs {
 			f.cache[pendingID] = true

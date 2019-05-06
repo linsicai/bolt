@@ -7,4 +7,5 @@ const maxMapSize = 0x7FFFFFFF // 2GB
 const maxAllocSize = 0xFFFFFFF
 
 // Are unaligned load/stores broken on this arch?
+// 未对齐的读写会有问题？
 var brokenUnaligned = false

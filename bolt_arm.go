@@ -11,6 +11,7 @@ const maxAllocSize = 0xFFFFFFF
 // Are unaligned load/stores broken on this arch?
 var brokenUnaligned bool
 
+// 测试对齐问题
 func init() {
 	// Simple check to see whether this arch handles unaligned load/stores
 	// correctly.

@@ -7,35 +7,60 @@ import (
 	"unsafe"
 )
 
+// 计算page 头部大小
 const pageHeaderSize = int(unsafe.Offsetof(((*page)(nil)).ptr))
 
+// 每页最少两个key
 const minKeysPerPage = 2
 
+// 分支元素大小
 const branchPageElementSize = int(unsafe.Sizeof(branchPageElement{}))
+
+// 叶子元素大小
 const leafPageElementSize = int(unsafe.Sizeof(leafPageElement{}))
 
+// 页类型
 const (
+    // 分支
 	branchPageFlag   = 0x01
+
+    // 叶子
 	leafPageFlag     = 0x02
+
+    // 元信息
 	metaPageFlag     = 0x04
+
+    // 空页？
 	freelistPageFlag = 0x10
 )
 
+// 桶叶子？
 const (
 	bucketLeafFlag = 0x01
 )
 
+// 页id
 type pgid uint64
 
 type page struct {
+    // ID
 	id       pgid
+
+    // 类型
 	flags    uint16
+
+    // ？
 	count    uint16
+
+    // ？
 	overflow uint32
+
+    // 数据指针
 	ptr      uintptr
 }
 
 // typ returns a human readable page type string used for debugging.
+// 返回页类型
 func (p *page) typ() string {
 	if (p.flags & branchPageFlag) != 0 {
 		return "branch"
@@ -46,6 +71,7 @@ func (p *page) typ() string {
 	} else if (p.flags & freelistPageFlag) != 0 {
 		return "freelist"
 	}
+
 	return fmt.Sprintf("unknown<%02x>", p.flags)
 }
 
@@ -65,6 +91,7 @@ func (p *page) leafPageElements() []leafPageElement {
 	if p.count == 0 {
 		return nil
 	}
+
 	return ((*[0x7FFFFFF]leafPageElement)(unsafe.Pointer(&p.ptr)))[:]
 }
 
@@ -78,6 +105,7 @@ func (p *page) branchPageElements() []branchPageElement {
 	if p.count == 0 {
 		return nil
 	}
+
 	return ((*[0x7FFFFFF]branchPageElement)(unsafe.Pointer(&p.ptr)))[:]
 }
 
@@ -87,6 +115,7 @@ func (p *page) hexdump(n int) {
 	fmt.Fprintf(os.Stderr, "%x\n", buf)
 }
 
+// 页表
 type pages []*page
 
 func (s pages) Len() int           { return len(s) }
@@ -95,26 +124,39 @@ func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
 type branchPageElement struct {
+    // 位置
 	pos   uint32
+
+    // key 大小
 	ksize uint32
+
 	pgid  pgid
 }
 
 // key returns a byte slice of the node key.
 func (n *branchPageElement) key() []byte {
 	buf := (*[maxAllocSize]byte)(unsafe.Pointer(n))
+
 	return (*[maxAllocSize]byte)(unsafe.Pointer(&buf[n.pos]))[:n.ksize]
 }
 
 // leafPageElement represents a node on a leaf page.
 type leafPageElement struct {
+    // 类型
 	flags uint32
+
+    // 位置
 	pos   uint32
+
+    // key 大小
 	ksize uint32
+
+    // 值大小
 	vsize uint32
 }
 
 // key returns a byte slice of the node key.
+// 返回key，第二个参数指定cap
 func (n *leafPageElement) key() []byte {
 	buf := (*[maxAllocSize]byte)(unsafe.Pointer(n))
 	return (*[maxAllocSize]byte)(unsafe.Pointer(&buf[n.pos]))[:n.ksize:n.ksize]
@@ -128,12 +170,20 @@ func (n *leafPageElement) value() []byte {
 
 // PageInfo represents human readable information about a page.
 type PageInfo struct {
+    // id
 	ID            int
+
+    // 类型
 	Type          string
+
+    // 页数？
 	Count         int
+
+    // ？？？
 	OverflowCount int
 }
 
+// 页ID 列表
 type pgids []pgid
 
 func (s pgids) Len() int           { return len(s) }
@@ -146,9 +196,11 @@ func (a pgids) merge(b pgids) pgids {
 	if len(a) == 0 {
 		return b
 	}
+
 	if len(b) == 0 {
 		return a
 	}
+
 	merged := make(pgids, len(a)+len(b))
 	mergepgids(merged, a, b)
 	return merged
@@ -157,9 +209,12 @@ func (a pgids) merge(b pgids) pgids {
 // mergepgids copies the sorted union of a and b into dst.
 // If dst is too small, it panics.
 func mergepgids(dst, a, b pgids) {
+    // 容错
 	if len(dst) < len(a)+len(b) {
 		panic(fmt.Errorf("mergepgids bad len %d < %d + %d", len(dst), len(a), len(b)))
 	}
+
+    // 一些特殊情况
 	// Copy in the opposite slice if one is nil.
 	if len(a) == 0 {
 		copy(dst, b)
@@ -174,14 +229,17 @@ func mergepgids(dst, a, b pgids) {
 	merged := dst[:0]
 
 	// Assign lead to the slice with a lower starting value, follow to the higher value.
+	// 分主次
 	lead, follow := a, b
 	if b[0] < a[0] {
 		lead, follow = b, a
 	}
 
+    // 遍历
 	// Continue while there are elements in the lead.
 	for len(lead) > 0 {
 		// Merge largest prefix of lead that is ahead of follow[0].
+		// 找比跟随者小的位置，append进merge中
 		n := sort.Search(len(lead), func(i int) bool { return lead[i] > follow[0] })
 		merged = append(merged, lead[:n]...)
 		if n >= len(lead) {
@@ -189,9 +247,11 @@ func mergepgids(dst, a, b pgids) {
 		}
 
 		// Swap lead and follow.
+		// 交换位置
 		lead, follow = follow, lead[n:]
 	}
 
 	// Append what's left in follow.
+	// 处理剩余的
 	_ = append(merged, follow...)
 }
