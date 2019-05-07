@@ -14,6 +14,7 @@ const (
 	MaxValueSize = (1 << 31) - 2
 )
 
+// 一些阈值
 const (
 	maxUint = ^uint(0)
 	minUint = 0
@@ -35,10 +36,19 @@ const DefaultFillPercent = 0.5
 // Bucket represents a collection of key/value pairs inside the database.
 type Bucket struct {
 	*bucket
+
+    // 事务
 	tx       *Tx                // the associated transaction
+
+    // 子桶
 	buckets  map[string]*Bucket // subbucket cache
+
+    // 内联页
 	page     *page              // inline page reference
+
+    // 根节点
 	rootNode *node              // materialized node for the root page.
+	// 节点列表
 	nodes    map[pgid]*node     // node cache
 
 	// Sets the threshold for filling nodes when they split. By default,
@@ -46,6 +56,7 @@ type Bucket struct {
 	// amount if you know that your write workloads are mostly append-only.
 	//
 	// This is non-persisted across transactions so it must be set in every Tx.
+	// 分裂阈值
 	FillPercent float64
 }
 
@@ -55,6 +66,7 @@ type Bucket struct {
 // header. In the case of inline buckets, the "root" will be 0.
 type bucket struct {
 	root     pgid   // page id of the bucket's root-level page
+
 	sequence uint64 // monotonically incrementing, used by NextSequence()
 }
 

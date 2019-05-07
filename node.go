@@ -9,48 +9,76 @@ import (
 
 // node represents an in-memory, deserialized page.
 type node struct {
+    // 桶
 	bucket     *Bucket
+
+    // 是否叶子
 	isLeaf     bool
+
+    // 不平衡？
 	unbalanced bool
+
+    // ？
 	spilled    bool
+
+    // key
 	key        []byte
+
+    // 页ID
 	pgid       pgid
+
+    // 父节点
 	parent     *node
+
+    // 子节点列表
 	children   nodes
+
+    // ？？？
 	inodes     inodes
 }
 
 // root returns the top-level node this node is attached to.
+// 递归找根节点
 func (n *node) root() *node {
 	if n.parent == nil {
 		return n
 	}
+
 	return n.parent.root()
 }
 
 // minKeys returns the minimum number of inodes this node should have.
+// 返回最少key
+// 叶子节点最少一个，否则最少2个
 func (n *node) minKeys() int {
 	if n.isLeaf {
 		return 1
 	}
+
 	return 2
 }
 
 // size returns the size of the node after serialization.
+// 总大小 = 页头大小 + Sum(i节点大小)
+// i节点大小 = 元素大小 + key 大小 + value 大小
 func (n *node) size() int {
 	sz, elsz := pageHeaderSize, n.pageElementSize()
+
 	for i := 0; i < len(n.inodes); i++ {
 		item := &n.inodes[i]
 		sz += elsz + len(item.key) + len(item.value)
 	}
+
 	return sz
 }
 
 // sizeLessThan returns true if the node is less than a given size.
 // This is an optimization to avoid calculating a large node when we only need
 // to know if it fits inside a certain page size.
+// 寻找合适的页大小
 func (n *node) sizeLessThan(v int) bool {
 	sz, elsz := pageHeaderSize, n.pageElementSize()
+
 	for i := 0; i < len(n.inodes); i++ {
 		item := &n.inodes[i]
 		sz += elsz + len(item.key) + len(item.value)
@@ -58,6 +86,7 @@ func (n *node) sizeLessThan(v int) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -66,18 +95,22 @@ func (n *node) pageElementSize() int {
 	if n.isLeaf {
 		return leafPageElementSize
 	}
+
 	return branchPageElementSize
 }
 
 // childAt returns the child node at a given index.
 func (n *node) childAt(index int) *node {
 	if n.isLeaf {
+	    // 叶子节点抛异常
 		panic(fmt.Sprintf("invalid childAt(%d) on a leaf node", index))
 	}
+
 	return n.bucket.node(n.inodes[index].pgid, n)
 }
 
 // childIndex returns the index of a given child node.
+// 定位节点
 func (n *node) childIndex(child *node) int {
 	index := sort.Search(len(n.inodes), func(i int) bool { return bytes.Compare(n.inodes[i].key, child.key) != -1 })
 	return index
@@ -89,14 +122,17 @@ func (n *node) numChildren() int {
 }
 
 // nextSibling returns the next node with the same parent.
+// 找邻居节点
 func (n *node) nextSibling() *node {
 	if n.parent == nil {
 		return nil
 	}
+
 	index := n.parent.childIndex(n)
 	if index >= n.parent.numChildren()-1 {
 		return nil
 	}
+
 	return n.parent.childAt(index + 1)
 }
 
@@ -105,15 +141,18 @@ func (n *node) prevSibling() *node {
 	if n.parent == nil {
 		return nil
 	}
+
 	index := n.parent.childIndex(n)
 	if index == 0 {
 		return nil
 	}
+
 	return n.parent.childAt(index - 1)
 }
 
 // put inserts a key/value.
 func (n *node) put(oldKey, newKey, value []byte, pgid pgid, flags uint32) {
+    // 异常检测
 	if pgid >= n.bucket.tx.meta.pgid {
 		panic(fmt.Sprintf("pgid (%d) above high water mark (%d)", pgid, n.bucket.tx.meta.pgid))
 	} else if len(oldKey) <= 0 {
@@ -123,9 +162,11 @@ func (n *node) put(oldKey, newKey, value []byte, pgid pgid, flags uint32) {
 	}
 
 	// Find insertion index.
+	// 找一个合适的节点
 	index := sort.Search(len(n.inodes), func(i int) bool { return bytes.Compare(n.inodes[i].key, oldKey) != -1 })
 
 	// Add capacity and shift nodes if we don't have an exact match and need to insert.
+	// 移动节点
 	exact := (len(n.inodes) > 0 && index < len(n.inodes) && bytes.Equal(n.inodes[index].key, oldKey))
 	if !exact {
 		n.inodes = append(n.inodes, inode{})
@@ -137,23 +178,28 @@ func (n *node) put(oldKey, newKey, value []byte, pgid pgid, flags uint32) {
 	inode.key = newKey
 	inode.value = value
 	inode.pgid = pgid
+
 	_assert(len(inode.key) > 0, "put: zero-length inode key")
 }
 
 // del removes a key from the node.
 func (n *node) del(key []byte) {
 	// Find index of key.
+	// 找节点
 	index := sort.Search(len(n.inodes), func(i int) bool { return bytes.Compare(n.inodes[i].key, key) != -1 })
 
 	// Exit if the key isn't found.
 	if index >= len(n.inodes) || !bytes.Equal(n.inodes[index].key, key) {
+		// 没有找到
 		return
 	}
 
 	// Delete inode from the node.
+	// 移动
 	n.inodes = append(n.inodes[:index], n.inodes[index+1:]...)
 
 	// Mark the node as needing rebalancing.
+	// mark 需要清理
 	n.unbalanced = true
 }
 
@@ -585,6 +631,7 @@ func (n *node) dump() {
 }
 */
 
+// 节点列表
 type nodes []*node
 
 func (s nodes) Len() int           { return len(s) }
@@ -595,8 +642,13 @@ func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[
 // It can be used to point to elements in a page or point
 // to an element which hasn't been added to a page yet.
 type inode struct {
+    // 类型
 	flags uint32
+
+    // 页ID
 	pgid  pgid
+
+    // kv
 	key   []byte
 	value []byte
 }
