@@ -21,7 +21,7 @@ type node struct {
     // ？
 	spilled    bool
 
-    // key
+    // 第一个key
 	key        []byte
 
     // 页ID
@@ -204,27 +204,35 @@ func (n *node) del(key []byte) {
 }
 
 // read initializes the node from a page.
+// 从页加载节点信息
 func (n *node) read(p *page) {
 	n.pgid = p.id
+
 	n.isLeaf = ((p.flags & leafPageFlag) != 0)
+
 	n.inodes = make(inodes, int(p.count))
 
 	for i := 0; i < int(p.count); i++ {
 		inode := &n.inodes[i]
+	
 		if n.isLeaf {
+		    // 叶子节点
 			elem := p.leafPageElement(uint16(i))
 			inode.flags = elem.flags
 			inode.key = elem.key()
 			inode.value = elem.value()
 		} else {
+		    // 分支节点
 			elem := p.branchPageElement(uint16(i))
 			inode.pgid = elem.pgid
 			inode.key = elem.key()
 		}
+
 		_assert(len(inode.key) > 0, "read: zero-length inode key")
 	}
 
 	// Save first key so we can find the node in the parent when we spill.
+	// 设置第一个key
 	if len(n.inodes) > 0 {
 		n.key = n.inodes[0].key
 		_assert(len(n.key) > 0, "read: zero-length node key")
@@ -236,28 +244,33 @@ func (n *node) read(p *page) {
 // write writes the items onto one or more pages.
 func (n *node) write(p *page) {
 	// Initialize page.
+	// 设置类型
 	if n.isLeaf {
 		p.flags |= leafPageFlag
 	} else {
 		p.flags |= branchPageFlag
 	}
 
+    // 节点数判断
 	if len(n.inodes) >= 0xFFFF {
 		panic(fmt.Sprintf("inode overflow: %d (pgid=%d)", len(n.inodes), p.id))
 	}
 	p.count = uint16(len(n.inodes))
 
 	// Stop here if there are no items to write.
+	// 空数据判断
 	if p.count == 0 {
 		return
 	}
 
 	// Loop over each item and write it to the page.
 	b := (*[maxAllocSize]byte)(unsafe.Pointer(&p.ptr))[n.pageElementSize()*len(n.inodes):]
+	// 遍历节点
 	for i, item := range n.inodes {
 		_assert(len(item.key) > 0, "write: zero-length inode key")
 
 		// Write the page element.
+		// 写页基本信息
 		if n.isLeaf {
 			elem := p.leafPageElement(uint16(i))
 			elem.pos = uint32(uintptr(unsafe.Pointer(&b[0])) - uintptr(unsafe.Pointer(elem)))
@@ -282,6 +295,7 @@ func (n *node) write(p *page) {
 		}
 
 		// Write data for the element to the end of the page.
+		// 写kv
 		copy(b[0:], item.key)
 		b = b[klen:]
 		copy(b[0:], item.value)
@@ -293,9 +307,11 @@ func (n *node) write(p *page) {
 
 // split breaks up a node into multiple smaller nodes, if appropriate.
 // This should only be called from the spill() function.
+// 页分裂
 func (n *node) split(pageSize int) []*node {
 	var nodes []*node
 
+    // 分裂出a，然后继续
 	node := n
 	for {
 		// Split node into two.
@@ -324,6 +340,7 @@ func (n *node) splitTwo(pageSize int) (*node, *node) {
 	}
 
 	// Determine the threshold before starting a new node.
+	// 分裂阈值
 	var fillPercent = n.bucket.FillPercent
 	if fillPercent < minFillPercent {
 		fillPercent = minFillPercent
@@ -333,23 +350,28 @@ func (n *node) splitTwo(pageSize int) (*node, *node) {
 	threshold := int(float64(pageSize) * fillPercent)
 
 	// Determine split position and sizes of the two pages.
+	// 找到分裂位置
 	splitIndex, _ := n.splitIndex(threshold)
 
 	// Split node into two separate nodes.
 	// If there's no parent then we'll need to create one.
 	if n.parent == nil {
+	    // 要有个父节点
 		n.parent = &node{bucket: n.bucket, children: []*node{n}}
 	}
 
 	// Create a new node and add it to the parent.
+	// 创建兄弟节点
 	next := &node{bucket: n.bucket, isLeaf: n.isLeaf, parent: n.parent}
 	n.parent.children = append(n.parent.children, next)
 
 	// Split inodes across two nodes.
+	// 分裂数据
 	next.inodes = n.inodes[splitIndex:]
 	n.inodes = n.inodes[:splitIndex]
 
 	// Update the statistics.
+	// 统计
 	n.bucket.tx.stats.Split++
 
 	return n, next
@@ -362,6 +384,8 @@ func (n *node) splitIndex(threshold int) (index, sz int) {
 	sz = pageHeaderSize
 
 	// Loop until we only have the minimum number of keys required for the second page.
+	// 保留最小节点数
+	// 累加大小至阈值
 	for i := 0; i < len(n.inodes)-minKeysPerPage; i++ {
 		index = i
 		inode := n.inodes[i]
@@ -391,6 +415,7 @@ func (n *node) spill() error {
 	// Spill child nodes first. Child nodes can materialize sibling nodes in
 	// the case of split-merge so we cannot use a range loop. We have to check
 	// the children size on every loop iteration.
+	// 先操作子节点
 	sort.Sort(n.children)
 	for i := 0; i < len(n.children); i++ {
 		if err := n.children[i].spill(); err != nil {
@@ -402,6 +427,7 @@ func (n *node) spill() error {
 	n.children = nil
 
 	// Split nodes into appropriate sizes. The first node will always be n.
+	// 分裂节点
 	var nodes = n.split(tx.db.pageSize)
 	for _, node := range nodes {
 		// Add node's page to the freelist if it's not new.

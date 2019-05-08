@@ -49,7 +49,7 @@ type page struct {
     // 类型
 	flags    uint16
 
-    // ？
+    // 元素数目
 	count    uint16
 
     // ？
