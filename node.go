@@ -431,17 +431,20 @@ func (n *node) spill() error {
 	var nodes = n.split(tx.db.pageSize)
 	for _, node := range nodes {
 		// Add node's page to the freelist if it's not new.
+		// 回收页
 		if node.pgid > 0 {
 			tx.db.freelist.free(tx.meta.txid, tx.page(node.pgid))
 			node.pgid = 0
 		}
 
 		// Allocate contiguous space for the node.
+		// 申请页
 		p, err := tx.allocate((node.size() / tx.db.pageSize) + 1)
 		if err != nil {
 			return err
 		}
 
+        // 写入页
 		// Write the node.
 		if p.id >= tx.meta.pgid {
 			panic(fmt.Sprintf("pgid (%d) above high water mark (%d)", p.id, tx.meta.pgid))
@@ -452,6 +455,7 @@ func (n *node) spill() error {
 
 		// Insert into parent inodes.
 		if node.parent != nil {
+		    // 插入到父节点的inode 中
 			var key = node.key
 			if key == nil {
 				key = node.inodes[0].key
@@ -463,6 +467,7 @@ func (n *node) spill() error {
 		}
 
 		// Update the statistics.
+		// 统计打点
 		tx.stats.Spill++
 	}
 
@@ -470,6 +475,7 @@ func (n *node) spill() error {
 	// as well. We'll clear out the children to make sure it doesn't try to respill.
 	if n.parent != nil && n.parent.pgid == 0 {
 		n.children = nil
+		// 父节点操作
 		return n.parent.spill()
 	}
 
@@ -479,15 +485,18 @@ func (n *node) spill() error {
 // rebalance attempts to combine the node with sibling nodes if the node fill
 // size is below a threshold or if there are not enough keys.
 func (n *node) rebalance() {
+    // 校验标识
 	if !n.unbalanced {
 		return
 	}
 	n.unbalanced = false
 
 	// Update statistics.
+	// 打点
 	n.bucket.tx.stats.Rebalance++
 
 	// Ignore if node is above threshold (25%) and has enough keys.
+	// 校验阈值
 	var threshold = n.bucket.tx.db.pageSize / 4
 	if n.size() > threshold && len(n.inodes) > n.minKeys() {
 		return
@@ -495,15 +504,18 @@ func (n *node) rebalance() {
 
 	// Root node has special handling.
 	if n.parent == nil {
+	    // 根节点，特殊处理
 		// If root node is a branch and only has one node then collapse it.
 		if !n.isLeaf && len(n.inodes) == 1 {
 			// Move root's child up.
+			// 分支转叶子
 			child := n.bucket.node(n.inodes[0].pgid, n)
 			n.isLeaf = child.isLeaf
 			n.inodes = child.inodes[:]
 			n.children = child.children
 
 			// Reparent all child nodes being moved.
+			// 认爹了
 			for _, inode := range n.inodes {
 				if child, ok := n.bucket.nodes[inode.pgid]; ok {
 					child.parent = n
@@ -511,6 +523,7 @@ func (n *node) rebalance() {
 			}
 
 			// Remove old child.
+			// 移除孩子
 			child.parent = nil
 			delete(n.bucket.nodes, child.pgid)
 			child.free()
@@ -521,10 +534,17 @@ func (n *node) rebalance() {
 
 	// If node has no keys then just remove it.
 	if n.numChildren() == 0 {
+	    // 没有子节点
+
+        // 父节点回收
 		n.parent.del(n.key)
 		n.parent.removeChild(n)
+
+		// 回收本节点
 		delete(n.bucket.nodes, n.pgid)
 		n.free()
+
+		// 父节点平衡
 		n.parent.rebalance()
 		return
 	}
@@ -532,6 +552,7 @@ func (n *node) rebalance() {
 	_assert(n.parent.numChildren() > 1, "parent must have at least 2 children")
 
 	// Destination node is right sibling if idx == 0, otherwise left sibling.
+	// 左走或右走
 	var target *node
 	var useNextSibling = (n.parent.childIndex(n) == 0)
 	if useNextSibling {
@@ -576,6 +597,7 @@ func (n *node) rebalance() {
 	}
 
 	// Either this node or the target node was deleted from the parent so rebalance it.
+	// 父节点继续
 	n.parent.rebalance()
 }
 
