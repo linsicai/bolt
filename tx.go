@@ -21,10 +21,18 @@ type txid uint64
 // them. Pages can not be reclaimed by the writer until no more transactions
 // are using them. A long running read transaction can cause the database to
 // quickly grow.
+// 事务
 type Tx struct {
+    // 是否可写
 	writable       bool
+
+    // ？？？
 	managed        bool
+
+    // 数据库
 	db             *DB
+
+    // 元信息
 	meta           *meta
 	root           Bucket
 	pages          map[pgid]*page

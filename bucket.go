@@ -8,9 +8,11 @@ import (
 
 const (
 	// MaxKeySize is the maximum length of a key, in bytes.
+	// 最大key大小，32k
 	MaxKeySize = 32768
 
 	// MaxValueSize is the maximum length of a value, in bytes.
+	// 最大值大小
 	MaxValueSize = (1 << 31) - 2
 )
 
@@ -22,8 +24,10 @@ const (
 	minInt  = -maxInt - 1
 )
 
+// 桶头大小
 const bucketHeaderSize = int(unsafe.Sizeof(bucket{}))
 
+// 填充阈值
 const (
 	minFillPercent = 0.1
 	maxFillPercent = 1.0
@@ -31,10 +35,12 @@ const (
 
 // DefaultFillPercent is the percentage that split pages are filled.
 // This value can be changed by setting Bucket.FillPercent.
+// 默认填充比率
 const DefaultFillPercent = 0.5
 
 // Bucket represents a collection of key/value pairs inside the database.
 type Bucket struct {
+    // 继承？
 	*bucket
 
     // 事务
@@ -65,18 +71,25 @@ type Bucket struct {
 // then its root page can be stored inline in the "value", after the bucket
 // header. In the case of inline buckets, the "root" will be 0.
 type bucket struct {
+    // 根页
 	root     pgid   // page id of the bucket's root-level page
 
+    // 序列号
 	sequence uint64 // monotonically incrementing, used by NextSequence()
 }
 
 // newBucket returns a new bucket associated with a transaction.
+// 新桶
 func newBucket(tx *Tx) Bucket {
+    // new
 	var b = Bucket{tx: tx, FillPercent: DefaultFillPercent}
+
+    // 如果可写的话
 	if tx.writable {
 		b.buckets = make(map[string]*Bucket)
 		b.nodes = make(map[pgid]*node)
 	}
+
 	return b
 }
 
@@ -100,6 +113,7 @@ func (b *Bucket) Writable() bool {
 // Do not use a cursor after the transaction is closed.
 func (b *Bucket) Cursor() *Cursor {
 	// Update transaction statistics.
+	// 打点
 	b.tx.stats.CursorCount++
 
 	// Allocate and return a cursor.
@@ -113,6 +127,7 @@ func (b *Bucket) Cursor() *Cursor {
 // Returns nil if the bucket does not exist.
 // The bucket instance is only valid for the lifetime of the transaction.
 func (b *Bucket) Bucket(name []byte) *Bucket {
+    // 查找已有桶
 	if b.buckets != nil {
 		if child := b.buckets[string(name)]; child != nil {
 			return child
@@ -120,15 +135,20 @@ func (b *Bucket) Bucket(name []byte) *Bucket {
 	}
 
 	// Move cursor to key.
+	// 使用cursor
 	c := b.Cursor()
+
+    // 定位到key
 	k, v, flags := c.seek(name)
 
 	// Return nil if the key doesn't exist or it is not a bucket.
 	if !bytes.Equal(name, k) || (flags&bucketLeafFlag) == 0 {
+	    // 如果没有找到叶子节点
 		return nil
 	}
 
 	// Otherwise create a bucket and cache it.
+	// 打开桶，缓存住
 	var child = b.openBucket(v)
 	if b.buckets != nil {
 		b.buckets[string(name)] = child
@@ -140,27 +160,32 @@ func (b *Bucket) Bucket(name []byte) *Bucket {
 // Helper method that re-interprets a sub-bucket value
 // from a parent into a Bucket
 func (b *Bucket) openBucket(value []byte) *Bucket {
+    // 新建桶
 	var child = newBucket(b.tx)
 
 	// If unaligned load/stores are broken on this arch and value is
 	// unaligned simply clone to an aligned byte array.
+	// 没有对齐吗
 	unaligned := brokenUnaligned && uintptr(unsafe.Pointer(&value[0]))&3 != 0
-
 	if unaligned {
+	    // 把值复制出来
 		value = cloneBytes(value)
 	}
 
 	// If this is a writable transaction then we need to copy the bucket entry.
 	// Read-only transactions can point directly at the mmap entry.
 	if b.tx.writable && !unaligned {
+	    // 可写的话，copy 出来
 		child.bucket = &bucket{}
 		*child.bucket = *(*bucket)(unsafe.Pointer(&value[0]))
 	} else {
+	    // 直接使用指针
 		child.bucket = (*bucket)(unsafe.Pointer(&value[0]))
 	}
 
 	// Save a reference to the inline page if the bucket is inline.
 	if child.root == 0 {
+	    // 根节点
 		child.page = (*page)(unsafe.Pointer(&value[bucketHeaderSize]))
 	}
 
@@ -171,6 +196,7 @@ func (b *Bucket) openBucket(value []byte) *Bucket {
 // Returns an error if the key already exists, if the bucket name is blank, or if the bucket name is too long.
 // The bucket instance is only valid for the lifetime of the transaction.
 func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
+    // 异常检测
 	if b.tx.db == nil {
 		return nil, ErrTxClosed
 	} else if !b.tx.writable {
@@ -180,11 +206,13 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 	}
 
 	// Move cursor to correct position.
+	// 定位到key
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
 
 	// Return an error if there is an existing key.
 	if bytes.Equal(key, k) {
+	    // 如果已有此key，报错
 		if (flags & bucketLeafFlag) != 0 {
 			return nil, ErrBucketExists
 		}
@@ -192,6 +220,7 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 	}
 
 	// Create empty, inline bucket.
+	// 新桶
 	var bucket = Bucket{
 		bucket:      &bucket{},
 		rootNode:    &node{isLeaf: true},
@@ -200,6 +229,7 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 	var value = bucket.write()
 
 	// Insert into node.
+	// 写入到节点中
 	key = cloneBytes(key)
 	c.node().put(key, key, value, 0, bucketLeafFlag)
 
@@ -217,16 +247,19 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 func (b *Bucket) CreateBucketIfNotExists(key []byte) (*Bucket, error) {
 	child, err := b.CreateBucket(key)
 	if err == ErrBucketExists {
+	    // 已存在
 		return b.Bucket(key), nil
 	} else if err != nil {
 		return nil, err
 	}
+
 	return child, nil
 }
 
 // DeleteBucket deletes a bucket at the given key.
 // Returns an error if the bucket does not exists, or if the key represents a non-bucket value.
 func (b *Bucket) DeleteBucket(key []byte) error {
+    // 异常校验
 	if b.tx.db == nil {
 		return ErrTxClosed
 	} else if !b.Writable() {
@@ -234,10 +267,12 @@ func (b *Bucket) DeleteBucket(key []byte) error {
 	}
 
 	// Move cursor to correct position.
+	// 定位到查找
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
 
 	// Return an error if bucket doesn't exist or is not a bucket.
+    // 无key 或 非叶子节点
 	if !bytes.Equal(key, k) {
 		return ErrBucketNotFound
 	} else if (flags & bucketLeafFlag) == 0 {
@@ -245,6 +280,7 @@ func (b *Bucket) DeleteBucket(key []byte) error {
 	}
 
 	// Recursively delete all child buckets.
+	// 删除所有子桶
 	child := b.Bucket(key)
 	err := child.ForEach(func(k, v []byte) error {
 		if v == nil {
@@ -259,14 +295,17 @@ func (b *Bucket) DeleteBucket(key []byte) error {
 	}
 
 	// Remove cached copy.
+	// 清缓存
 	delete(b.buckets, string(key))
 
 	// Release all bucket pages to freelist.
+	// 回收页
 	child.nodes = nil
 	child.rootNode = nil
 	child.free()
 
 	// Delete the node if we have a matching key.
+	// 删除节点
 	c.node().del(key)
 
 	return nil
@@ -276,17 +315,21 @@ func (b *Bucket) DeleteBucket(key []byte) error {
 // Returns a nil value if the key does not exist or if the key is a nested bucket.
 // The returned value is only valid for the life of the transaction.
 func (b *Bucket) Get(key []byte) []byte {
+    // 定位
 	k, v, flags := b.Cursor().seek(key)
 
 	// Return nil if this is a bucket.
+	// 非叶子
 	if (flags & bucketLeafFlag) != 0 {
 		return nil
 	}
 
 	// If our target node isn't the same key as what's passed in then return nil.
 	if !bytes.Equal(key, k) {
+	    // 不是key
 		return nil
 	}
+
 	return v
 }
 
@@ -295,6 +338,7 @@ func (b *Bucket) Get(key []byte) []byte {
 // Supplied value must remain valid for the life of the transaction.
 // Returns an error if the bucket was created from a read-only transaction, if the key is blank, if the key is too large, or if the value is too large.
 func (b *Bucket) Put(key []byte, value []byte) error {
+    // 异常检测
 	if b.tx.db == nil {
 		return ErrTxClosed
 	} else if !b.Writable() {
@@ -308,6 +352,7 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 	}
 
 	// Move cursor to correct position.
+	// 定位
 	c := b.Cursor()
 	k, _, flags := c.seek(key)
 
@@ -317,6 +362,7 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 	}
 
 	// Insert into node.
+	// 复制写
 	key = cloneBytes(key)
 	c.node().put(key, key, value, 0, 0)
 
@@ -327,6 +373,7 @@ func (b *Bucket) Put(key []byte, value []byte) error {
 // If the key does not exist then nothing is done and a nil error is returned.
 // Returns an error if the bucket was created from a read-only transaction.
 func (b *Bucket) Delete(key []byte) error {
+    // 异常检测
 	if b.tx.db == nil {
 		return ErrTxClosed
 	} else if !b.Writable() {
@@ -334,22 +381,28 @@ func (b *Bucket) Delete(key []byte) error {
 	}
 
 	// Move cursor to correct position.
+	// 定位
 	c := b.Cursor()
 	_, _, flags := c.seek(key)
 
 	// Return an error if there is already existing bucket value.
 	if (flags & bucketLeafFlag) != 0 {
+	    // 不可删
 		return ErrIncompatibleValue
 	}
 
 	// Delete the node if we have a matching key.
+	// 删除key
 	c.node().del(key)
 
 	return nil
 }
 
 // Sequence returns the current integer for the bucket without incrementing it.
-func (b *Bucket) Sequence() uint64 { return b.bucket.sequence }
+func (b *Bucket) Sequence() uint64 {
+    // 序列号
+    return b.bucket.sequence
+}
 
 // SetSequence updates the sequence number for the bucket.
 func (b *Bucket) SetSequence(v uint64) error {
