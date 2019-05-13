@@ -1211,8 +1211,7 @@ func warnf(msg string, v ...interface{}) {
 	fmt.Fprintf(os.Stderr, msg+"\n", v...)
 }
 
-// 打印栈信息
-// 去除前三行
+// 打印栈信息，去除前三行
 func printstack() {
 	stack := strings.Join(
 		strings.Split(
