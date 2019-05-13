@@ -36,12 +36,12 @@ const IgnoreNoSync = runtime.GOOS == "openbsd"
 // Default values if not set in a DB instance.
 // 默认参数
 const (
-    // 批量提交最大大小
-	DefaultMaxBatchSize  int = 1000
+	// 批量提交最大大小
+	DefaultMaxBatchSize int = 1000
 	// 批量提交延时
-	DefaultMaxBatchDelay     = 10 * time.Millisecond
+	DefaultMaxBatchDelay = 10 * time.Millisecond
 	// ？
-	DefaultAllocSize         = 16 * 1024 * 1024
+	DefaultAllocSize = 16 * 1024 * 1024
 )
 
 // default page size for db is set to the OS page size.
@@ -114,14 +114,14 @@ type DB struct {
 	lockfile *os.File // windows only
 	dataref  []byte   // mmap'ed readonly, write throws SEGV
 	data     *[maxMapSize]byte
-	datasz   int // 数据大小？
-	filesz   int // current on disk file size
-	meta0    *meta // 元信息
-	meta1    *meta // 元信息
-	pageSize int   // 页大小
-	opened   bool  // 打开标记
-	rwtx     *Tx   // 写事务
-	txs      []*Tx // 事务列表
+	datasz   int       // 数据大小？
+	filesz   int       // current on disk file size
+	meta0    *meta     // 元信息
+	meta1    *meta     // 元信息
+	pageSize int       // 页大小
+	opened   bool      // 打开标记
+	rwtx     *Tx       // 写事务
+	txs      []*Tx     // 事务列表
 	freelist *freelist // 空闲列表
 	stats    Stats     // 统计
 
@@ -130,13 +130,13 @@ type DB struct {
 	batchMu sync.Mutex // 批量锁
 	batch   *batch     // 批量
 
-    // 锁
+	// 锁
 	rwlock   sync.Mutex   // Allows only one writer at a time.
 	metalock sync.Mutex   // Protects meta page access.
 	mmaplock sync.RWMutex // Protects mmap access during remapping.
 	statlock sync.RWMutex // Protects stats access.
 
-    // 写文件
+	// 写文件
 	ops struct {
 		writeAt func(b []byte, off int64) (n int, err error)
 	}
@@ -171,7 +171,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 	// Set default options if no options are provided.
 	if options == nil {
-	    // 用户默认参数
+		// 用户默认参数
 		options = DefaultOptions
 	}
 	db.NoGrowSync = options.NoGrowSync
@@ -183,7 +183,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	db.MaxBatchDelay = DefaultMaxBatchDelay
 	db.AllocSize = DefaultAllocSize
 
-    // 文件标记
+	// 文件标记
 	flag := os.O_RDWR
 	if options.ReadOnly {
 		flag = os.O_RDONLY
@@ -218,7 +218,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 	// Initialize the database if it doesn't exist.
 	if info, err := db.file.Stat(); err != nil {
-	    // 文件有问题
+		// 文件有问题
 		return nil, err
 	} else if info.Size() == 0 {
 		// Initialize new files with meta pages.
@@ -231,7 +231,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		// 读取元信息表
 		var buf [0x1000]byte
 		if _, err := db.file.ReadAt(buf[:], 0); err == nil {
-		    // 从缓存中读取页
+			// 从缓存中读取页
 			m := db.pageInBuffer(buf[:], 0).meta()
 			if err := m.validate(); err != nil {
 				// If we can't read the page size, we can assume it's the same
@@ -244,7 +244,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 				db.pageSize = os.Getpagesize()
 				// 验证失败，取默认页大小
 			} else {
-			    // 制定页大小
+				// 制定页大小
 				db.pageSize = int(m.pageSize)
 			}
 		}
@@ -277,11 +277,11 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 // mmap opens the underlying memory-mapped file and initializes the meta references.
 // minsz is the minimum size that the new mmap can be.
 func (db *DB) mmap(minsz int) error {
-    // 加锁
+	// 加锁
 	db.mmaplock.Lock()
 	defer db.mmaplock.Unlock()
 
-    // 校验文件信息
+	// 校验文件信息
 	info, err := db.file.Stat()
 	if err != nil {
 		return fmt.Errorf("mmap stat error: %s", err)
@@ -397,7 +397,7 @@ func (db *DB) init() error {
 	// 创建两个元信息页
 	buf := make([]byte, db.pageSize*4)
 	for i := 0; i < 2; i++ {
-	    // 建页
+		// 建页
 		p := db.pageInBuffer(buf[:], pgid(i))
 		p.id = pgid(i)
 		p.flags = metaPageFlag
@@ -445,15 +445,15 @@ func (db *DB) init() error {
 // Close releases all database resources.
 // All transactions must be closed before closing the database.
 func (db *DB) Close() error {
-    // 禁止写
+	// 禁止写
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-    // 禁止修改元信息
+	// 禁止修改元信息
 	db.metalock.Lock()
 	defer db.metalock.Unlock()
 
-    // 读取mmap lock
+	// 读取mmap lock
 	db.mmaplock.RLock()
 	defer db.mmaplock.RUnlock()
 
@@ -462,14 +462,14 @@ func (db *DB) Close() error {
 
 func (db *DB) close() error {
 	if !db.opened {
-	    // 已关闭
+		// 已关闭
 		return nil
 	}
 
-    // 设置关闭标记
+	// 设置关闭标记
 	db.opened = false
 
-    // 清理空闲列表
+	// 清理空闲列表
 	db.freelist = nil
 
 	// Clear ops.
@@ -526,7 +526,7 @@ func (db *DB) close() error {
 // 创建事务
 func (db *DB) Begin(writable bool) (*Tx, error) {
 	if writable {
-	    // 写事务
+		// 写事务
 		return db.beginRWTx()
 	}
 
@@ -548,7 +548,7 @@ func (db *DB) beginTx() (*Tx, error) {
 
 	// Exit if the database is not open yet.
 	if !db.opened {
-	    // 如果db 关闭了，报错
+		// 如果db 关闭了，报错
 		db.mmaplock.RUnlock()
 		db.metalock.Unlock()
 		return nil, ErrDatabaseNotOpen
@@ -581,7 +581,7 @@ func (db *DB) beginTx() (*Tx, error) {
 func (db *DB) beginRWTx() (*Tx, error) {
 	// If the database was opened with Options.ReadOnly, return an error.
 	if db.readOnly {
-	    // 只读数据库
+		// 只读数据库
 		return nil, ErrDatabaseReadOnly
 	}
 
@@ -666,7 +666,7 @@ func (db *DB) removeTx(tx *Tx) {
 //
 // Attempting to manually commit or rollback within the function will cause a panic.
 func (db *DB) Update(fn func(*Tx) error) error {
-    // 开始写事务
+	// 开始写事务
 	t, err := db.Begin(true)
 	if err != nil {
 		return err
@@ -674,7 +674,7 @@ func (db *DB) Update(fn func(*Tx) error) error {
 
 	// Make sure the transaction rolls back in the event of a panic.
 	defer func() {
-	    // 出错时回滚
+		// 出错时回滚
 		if t.db != nil {
 			t.rollback()
 		}
@@ -689,12 +689,12 @@ func (db *DB) Update(fn func(*Tx) error) error {
 	err = fn(t)
 	t.managed = false
 	if err != nil {
-	    // 回滚
+		// 回滚
 		_ = t.Rollback()
 		return err
 	}
 
-    // 提交
+	// 提交
 	return t.Commit()
 }
 
@@ -703,7 +703,7 @@ func (db *DB) Update(fn func(*Tx) error) error {
 //
 // Attempting to manually rollback within the function will cause a panic.
 func (db *DB) View(fn func(*Tx) error) error {
-    // 读事务开始
+	// 读事务开始
 	t, err := db.Begin(false)
 	if err != nil {
 		return err
@@ -711,7 +711,7 @@ func (db *DB) View(fn func(*Tx) error) error {
 
 	// Make sure the transaction rolls back in the event of a panic.
 	defer func() {
-	    // 有问题回滚
+		// 有问题回滚
 		if t.db != nil {
 			t.rollback()
 		}
@@ -724,12 +724,12 @@ func (db *DB) View(fn func(*Tx) error) error {
 	err = fn(t)
 	t.managed = false
 	if err != nil {
-	    // 出错回滚
+		// 出错回滚
 		_ = t.Rollback()
 		return err
 	}
 
-    // 正常回滚
+	// 正常回滚
 	if err := t.Rollback(); err != nil {
 		return err
 	}
@@ -755,13 +755,13 @@ func (db *DB) View(fn func(*Tx) error) error {
 //
 // Batch is only useful when there are multiple goroutines calling it.
 func (db *DB) Batch(fn func(*Tx) error) error {
-    // 错误信号量
+	// 错误信号量
 	errCh := make(chan error, 1)
 
-    // 批量锁
+	// 批量锁
 	db.batchMu.Lock()
 	if (db.batch == nil) || (db.batch != nil && len(db.batch.calls) >= db.MaxBatchSize) {
-	    // 新建batch
+		// 新建batch
 		// There is no existing batch, or the existing batch is full; start a new one.
 		db.batch = &batch{
 			db: db,
@@ -769,7 +769,7 @@ func (db *DB) Batch(fn func(*Tx) error) error {
 		db.batch.timer = time.AfterFunc(db.MaxBatchDelay, db.batch.trigger)
 	}
 
-    // 加入到批量列表中
+	// 加入到批量列表中
 	db.batch.calls = append(db.batch.calls, call{fn: fn, err: errCh})
 	if len(db.batch.calls) >= db.MaxBatchSize {
 		// wake up batch, it's ready to run
@@ -779,10 +779,10 @@ func (db *DB) Batch(fn func(*Tx) error) error {
 	// 解锁
 	db.batchMu.Unlock()
 
-    // 等待错误
+	// 等待错误
 	err := <-errCh
 	if err == trySolo {
-	    // 一个头做
+		// 一个头做
 		err = db.Update(fn)
 	}
 
@@ -791,15 +791,15 @@ func (db *DB) Batch(fn func(*Tx) error) error {
 
 // 执行体
 type call struct {
-    // 运行hansr
-	fn  func(*Tx) error
+	// 运行hansr
+	fn func(*Tx) error
 
-    // 错误信号量
+	// 错误信号量
 	err chan<- error
 }
 
 type batch struct {
-	db    *DB
+	db *DB
 
 	timer *time.Timer
 
@@ -810,28 +810,30 @@ type batch struct {
 
 // trigger runs the batch if it hasn't already been run.
 func (b *batch) trigger() {
-    // 只运行一次
+	// 只运行一次
 	b.start.Do(b.run)
 }
 
 // run performs the transactions in the batch and communicates results
 // back to DB.Batch.
 func (b *batch) run() {
-    // 加锁
+	// 加锁
 	b.db.batchMu.Lock()
 	// 停止计时器
 	b.timer.Stop()
 	// Make sure no new work is added to this batch, but don't break
 	// other batches.
 	if b.db.batch == b {
-	    // 与世隔绝
+		// 与世隔绝
 		b.db.batch = nil
 	}
 	// 解锁
 	b.db.batchMu.Unlock()
 
 retry:
+	// 遍历所有调用
 	for len(b.calls) > 0 {
+		// 执行
 		var failIdx = -1
 		err := b.db.Update(func(tx *Tx) error {
 			for i, c := range b.calls {
@@ -848,16 +850,23 @@ retry:
 			// safe to shorten b.calls here because db.batch no longer
 			// points to us, and we hold the mutex anyway.
 			c := b.calls[failIdx]
+
+			// 处理掉失败的
 			b.calls[failIdx], b.calls = b.calls[len(b.calls)-1], b.calls[:len(b.calls)-1]
+
 			// tell the submitter re-run it solo, continue with the rest of the batch
+			// 通知失败了
 			c.err <- trySolo
 			continue retry
 		}
 
 		// pass success, or bolt internal errors, to all callers
+		// 通知所有结果
 		for _, c := range b.calls {
 			c.err <- err
 		}
+
+		// 结束了
 		break retry
 	}
 }
@@ -865,25 +874,31 @@ retry:
 // trySolo is a special sentinel error value used for signaling that a
 // transaction function should be re-run. It should never be seen by
 // callers.
+// 异常
 var trySolo = errors.New("batch function returned an error and should be re-run solo")
 
 type panicked struct {
 	reason interface{}
 }
 
+// 异常字符串
 func (p panicked) Error() string {
 	if err, ok := p.reason.(error); ok {
 		return err.Error()
 	}
+
 	return fmt.Sprintf("panic: %v", p.reason)
 }
 
 func safelyCall(fn func(*Tx) error, tx *Tx) (err error) {
 	defer func() {
+		// 异常恢复
 		if p := recover(); p != nil {
 			err = panicked{p}
 		}
 	}()
+
+	// 执行
 	return fn(tx)
 }
 
@@ -891,13 +906,18 @@ func safelyCall(fn func(*Tx) error, tx *Tx) (err error) {
 //
 // This is not necessary under normal operation, however, if you use NoSync
 // then it allows you to force the database file to sync against the disk.
-func (db *DB) Sync() error { return fdatasync(db) }
+// 文件同步
+func (db *DB) Sync() error {
+	return fdatasync(db)
+}
 
 // Stats retrieves ongoing performance stats for the database.
 // This is only updated when a transaction closes.
+// 获取统计
 func (db *DB) Stats() Stats {
 	db.statlock.RLock()
 	defer db.statlock.RUnlock()
+
 	return db.stats
 }
 
@@ -910,6 +930,7 @@ func (db *DB) Info() *Info {
 // page retrieves a page reference from the mmap based on the current page size.
 func (db *DB) page(id pgid) *page {
 	pos := id * pgid(db.pageSize)
+
 	return (*page)(unsafe.Pointer(&db.data[pos]))
 }
 
@@ -923,6 +944,7 @@ func (db *DB) meta() *meta {
 	// We have to return the meta with the highest txid which doesn't fail
 	// validation. Otherwise, we can cause errors when in fact the database is
 	// in a consistent state. metaA is the one with the higher txid.
+	// 排序
 	metaA := db.meta0
 	metaB := db.meta1
 	if db.meta1.txid > db.meta0.txid {
@@ -931,6 +953,7 @@ func (db *DB) meta() *meta {
 	}
 
 	// Use higher meta page if valid. Otherwise fallback to previous, if valid.
+	// 找一个好的
 	if err := metaA.validate(); err == nil {
 		return metaA
 	} else if err := metaB.validate(); err == nil {
@@ -939,27 +962,33 @@ func (db *DB) meta() *meta {
 
 	// This should never be reached, because both meta1 and meta0 were validated
 	// on mmap() and we do fsync() on every write.
+	// 异常
 	panic("bolt.DB.meta(): invalid meta pages")
 }
 
 // allocate returns a contiguous block of memory starting at a given page.
 func (db *DB) allocate(count int) (*page, error) {
 	// Allocate a temporary buffer for the page.
+	// 申请页
 	var buf []byte
 	if count == 1 {
+		// 从页池里面取
 		buf = db.pagePool.Get().([]byte)
 	} else {
+		// 重新申请
 		buf = make([]byte, count*db.pageSize)
 	}
 	p := (*page)(unsafe.Pointer(&buf[0]))
 	p.overflow = uint32(count - 1)
 
 	// Use pages from the freelist if they are available.
+	// 取ID
 	if p.id = db.freelist.allocate(count); p.id != 0 {
 		return p, nil
 	}
 
 	// Resize mmap() if we're at the end.
+	// 空间不足，扩大大小
 	p.id = db.rwtx.meta.pgid
 	var minsz = int((p.id+pgid(count))+1) * db.pageSize
 	if minsz >= db.datasz {
@@ -978,11 +1007,13 @@ func (db *DB) allocate(count int) (*page, error) {
 func (db *DB) grow(sz int) error {
 	// Ignore if the new size is less than available file size.
 	if sz <= db.filesz {
+		// 已成功
 		return nil
 	}
 
 	// If the data is smaller than the alloc size then only allocate what's needed.
 	// Once it goes over the allocation size then allocate in chunks.
+	// 调整大小
 	if db.datasz < db.AllocSize {
 		sz = db.datasz
 	} else {
@@ -993,10 +1024,13 @@ func (db *DB) grow(sz int) error {
 	// https://github.com/boltdb/bolt/issues/284
 	if !db.NoGrowSync && !db.readOnly {
 		if runtime.GOOS != "windows" {
+			// 增长
 			if err := db.file.Truncate(int64(sz)); err != nil {
 				return fmt.Errorf("file resize error: %s", err)
 			}
 		}
+
+		// 同步
 		if err := db.file.Sync(); err != nil {
 			return fmt.Errorf("file sync error: %s", err)
 		}
@@ -1006,6 +1040,7 @@ func (db *DB) grow(sz int) error {
 	return nil
 }
 
+// 只读？
 func (db *DB) IsReadOnly() bool {
 	return db.readOnly
 }
@@ -1062,7 +1097,7 @@ type Stats struct {
 	TxN     int // total number of started read transactions
 	OpenTxN int // number of currently open read transactions
 
-    // 事务统计
+	// 事务统计
 	TxStats TxStats // global, ongoing stats.
 }
 
@@ -1110,7 +1145,7 @@ type meta struct {
 
 // validate checks the marker bytes and version of the meta page to ensure it matches this binary.
 func (m *meta) validate() error {
-    // 元信息校验
+	// 元信息校验
 	if m.magic != magic {
 		return ErrInvalid
 	} else if m.version != version {
@@ -1129,9 +1164,9 @@ func (m *meta) copy(dest *meta) {
 
 // write writes the meta onto a page.
 func (m *meta) write(p *page) {
-    // 将元信息写到页中
+	// 将元信息写到页中
 
-    // 页id 校验
+	// 页id 校验
 	if m.root.root >= m.pgid {
 		panic(fmt.Sprintf("root bucket pgid (%d) above high water mark (%d)", m.root.root, m.pgid))
 	} else if m.freelist >= m.pgid {
@@ -1147,7 +1182,7 @@ func (m *meta) write(p *page) {
 	// 计算校验码
 	m.checksum = m.sum64()
 
-    // 复制到页中
+	// 复制到页中
 	m.copy(p.meta())
 }
 
@@ -1170,19 +1205,19 @@ func _assert(condition bool, msg string, v ...interface{}) {
 
 // 打印信息
 func warn(v ...interface{}) {
-    fmt.Fprintln(os.Stderr, v...)
+	fmt.Fprintln(os.Stderr, v...)
 }
 func warnf(msg string, v ...interface{}) {
-   fmt.Fprintf(os.Stderr, msg+"\n", v...)
+	fmt.Fprintf(os.Stderr, msg+"\n", v...)
 }
 
 // 打印栈信息
 // 去除前三行
 func printstack() {
 	stack := strings.Join(
-	    strings.Split(
-	        string(debug.Stack()), "\n")[2:],
-	    "\n")
+		strings.Split(
+			string(debug.Stack()), "\n")[2:],
+		"\n")
 
 	fmt.Fprintln(os.Stderr, stack)
 }

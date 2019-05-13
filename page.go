@@ -21,16 +21,16 @@ const leafPageElementSize = int(unsafe.Sizeof(leafPageElement{}))
 
 // 页类型
 const (
-    // 分支
-	branchPageFlag   = 0x01
+	// 分支
+	branchPageFlag = 0x01
 
-    // 叶子
-	leafPageFlag     = 0x02
+	// 叶子
+	leafPageFlag = 0x02
 
-    // 元信息
-	metaPageFlag     = 0x04
+	// 元信息
+	metaPageFlag = 0x04
 
-    // 空页？
+	// 空页？
 	freelistPageFlag = 0x10
 )
 
@@ -43,20 +43,20 @@ const (
 type pgid uint64
 
 type page struct {
-    // ID
-	id       pgid
+	// ID
+	id pgid
 
-    // 类型
-	flags    uint16
+	// 类型
+	flags uint16
 
-    // 元素数目
-	count    uint16
+	// 元素数目
+	count uint16
 
-    // ？
+	// 容量
 	overflow uint32
 
-    // 数据指针
-	ptr      uintptr
+	// 数据指针
+	ptr uintptr
 }
 
 // typ returns a human readable page type string used for debugging.
@@ -124,13 +124,13 @@ func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
 type branchPageElement struct {
-    // 位置
-	pos   uint32
+	// 位置
+	pos uint32
 
-    // key 大小
+	// key 大小
 	ksize uint32
 
-	pgid  pgid
+	pgid pgid
 }
 
 // key returns a byte slice of the node key.
@@ -142,16 +142,16 @@ func (n *branchPageElement) key() []byte {
 
 // leafPageElement represents a node on a leaf page.
 type leafPageElement struct {
-    // 类型
+	// 类型
 	flags uint32
 
-    // 位置
-	pos   uint32
+	// 位置
+	pos uint32
 
-    // key 大小
+	// key 大小
 	ksize uint32
 
-    // 值大小
+	// 值大小
 	vsize uint32
 }
 
@@ -170,16 +170,16 @@ func (n *leafPageElement) value() []byte {
 
 // PageInfo represents human readable information about a page.
 type PageInfo struct {
-    // id
-	ID            int
+	// id
+	ID int
 
-    // 类型
-	Type          string
+	// 类型
+	Type string
 
-    // 页数？
-	Count         int
+	// 页数？
+	Count int
 
-    // ？？？
+	// ？？？
 	OverflowCount int
 }
 
@@ -209,12 +209,12 @@ func (a pgids) merge(b pgids) pgids {
 // mergepgids copies the sorted union of a and b into dst.
 // If dst is too small, it panics.
 func mergepgids(dst, a, b pgids) {
-    // 容错
+	// 容错
 	if len(dst) < len(a)+len(b) {
 		panic(fmt.Errorf("mergepgids bad len %d < %d + %d", len(dst), len(a), len(b)))
 	}
 
-    // 一些特殊情况
+	// 一些特殊情况
 	// Copy in the opposite slice if one is nil.
 	if len(a) == 0 {
 		copy(dst, b)
@@ -235,7 +235,7 @@ func mergepgids(dst, a, b pgids) {
 		lead, follow = b, a
 	}
 
-    // 遍历
+	// 遍历
 	// Continue while there are elements in the lead.
 	for len(lead) > 0 {
 		// Merge largest prefix of lead that is ahead of follow[0].
