@@ -17,10 +17,14 @@ func flock(db *DB, mode os.FileMode, exclusive bool, timeout time.Duration) erro
 		// If we're beyond our timeout then return an error.
 		// This can only occur after we've attempted a flock once.
 		if t.IsZero() {
+		    // 初始化
 			t = time.Now()
 		} else if timeout > 0 && time.Since(t) > timeout {
+		    // 超时了
 			return ErrTimeout
 		}
+
+        // 锁模式
 		flag := syscall.LOCK_SH
 		if exclusive {
 			flag = syscall.LOCK_EX
@@ -29,12 +33,15 @@ func flock(db *DB, mode os.FileMode, exclusive bool, timeout time.Duration) erro
 		// Otherwise attempt to obtain an exclusive lock.
 		err := syscall.Flock(int(db.file.Fd()), flag|syscall.LOCK_NB)
 		if err == nil {
+		    // 加锁成功
 			return nil
 		} else if err != syscall.EWOULDBLOCK {
+		    // 加锁失败
 			return err
 		}
 
 		// Wait for a bit and try again.
+		// 等50毫秒后重试
 		time.Sleep(50 * time.Millisecond)
 	}
 }
@@ -47,17 +54,20 @@ func funlock(db *DB) error {
 // mmap memory maps a DB's data file.
 func mmap(db *DB, sz int) error {
 	// Map the data file to memory.
+	// mmap
 	b, err := syscall.Mmap(int(db.file.Fd()), 0, sz, syscall.PROT_READ, syscall.MAP_SHARED|db.MmapFlags)
 	if err != nil {
 		return err
 	}
 
 	// Advise the kernel that the mmap is accessed randomly.
+	// 建议内核只读这块内存
 	if err := madvise(b, syscall.MADV_RANDOM); err != nil {
 		return fmt.Errorf("madvise: %s", err)
 	}
 
 	// Save the original byte slice and convert to a byte array pointer.
+	// 转成子节数组
 	db.dataref = b
 	db.data = (*[maxMapSize]byte)(unsafe.Pointer(&b[0]))
 	db.datasz = sz
@@ -68,6 +78,7 @@ func mmap(db *DB, sz int) error {
 func munmap(db *DB) error {
 	// Ignore the unmap if we have no mapped data.
 	if db.dataref == nil {
+	    // 已经释放过
 		return nil
 	}
 
@@ -85,5 +96,6 @@ func madvise(b []byte, advice int) (err error) {
 	if e1 != 0 {
 		err = e1
 	}
+
 	return
 }
