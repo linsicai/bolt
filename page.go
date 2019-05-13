@@ -30,7 +30,7 @@ const (
     // 元信息
 	metaPageFlag     = 0x04
 
-    // 空页？
+    // 空闲列表页
 	freelistPageFlag = 0x10
 )
 
@@ -52,10 +52,10 @@ type page struct {
     // 元素数目
 	count    uint16
 
-    // ？
+    // 容量
 	overflow uint32
 
-    // 数据指针
+    // 数据地址
 	ptr      uintptr
 }
 
