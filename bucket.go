@@ -406,6 +406,7 @@ func (b *Bucket) Sequence() uint64 {
 
 // SetSequence updates the sequence number for the bucket.
 func (b *Bucket) SetSequence(v uint64) error {
+    // 安全校验
 	if b.tx.db == nil {
 		return ErrTxClosed
 	} else if !b.Writable() {
@@ -415,16 +416,19 @@ func (b *Bucket) SetSequence(v uint64) error {
 	// Materialize the root node if it hasn't been already so that the
 	// bucket will be saved during commit.
 	if b.rootNode == nil {
+	    // ？？？
 		_ = b.node(b.root, nil)
 	}
 
 	// Increment and return the sequence.
+	// 设置序列号
 	b.bucket.sequence = v
 	return nil
 }
 
 // NextSequence returns an autoincrementing integer for the bucket.
 func (b *Bucket) NextSequence() (uint64, error) {
+    // 安全校验
 	if b.tx.db == nil {
 		return 0, ErrTxClosed
 	} else if !b.Writable() {
@@ -433,11 +437,13 @@ func (b *Bucket) NextSequence() (uint64, error) {
 
 	// Materialize the root node if it hasn't been already so that the
 	// bucket will be saved during commit.
+	// ？？？
 	if b.rootNode == nil {
 		_ = b.node(b.root, nil)
 	}
 
 	// Increment and return the sequence.
+	// 递增序列号
 	b.bucket.sequence++
 	return b.bucket.sequence, nil
 }
@@ -447,26 +453,39 @@ func (b *Bucket) NextSequence() (uint64, error) {
 // the error is returned to the caller. The provided function must not modify
 // the bucket; this will result in undefined behavior.
 func (b *Bucket) ForEach(fn func(k, v []byte) error) error {
+    // 安全校验
 	if b.tx.db == nil {
 		return ErrTxClosed
 	}
+
+    // 遍历
 	c := b.Cursor()
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		if err := fn(k, v); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
 // Stat returns stats on a bucket.
+// 统计
 func (b *Bucket) Stats() BucketStats {
 	var s, subStats BucketStats
+
+    // 页面大小
 	pageSize := b.tx.db.pageSize
+
+    // ？
 	s.BucketN += 1
+
+    // 內联
 	if b.root == 0 {
 		s.InlineBucketN += 1
 	}
+
+    // 遍历页面
 	b.forEachPage(func(p *page, depth int) {
 		if (p.flags & leafPageFlag) != 0 {
 			s.KeyN += int(p.count)
@@ -545,11 +564,13 @@ func (b *Bucket) Stats() BucketStats {
 func (b *Bucket) forEachPage(fn func(*page, int)) {
 	// If we have an inline page then just use that.
 	if b.page != nil {
+	    // 内联页面
 		fn(b.page, 0)
 		return
 	}
 
 	// Otherwise traverse the page hierarchy.
+	// 递归？
 	b.tx.forEachPage(b.root, 0, fn)
 }
 
@@ -794,27 +815,32 @@ func (b *Bucket) pageNode(id pgid) (*page, *node) {
 // BucketStats records statistics about resources used by a bucket.
 type BucketStats struct {
 	// Page count statistics.
+	// 页数统计
 	BranchPageN     int // number of logical branch pages
 	BranchOverflowN int // number of physical branch overflow pages
 	LeafPageN       int // number of logical leaf pages
 	LeafOverflowN   int // number of physical leaf overflow pages
 
 	// Tree statistics.
+	// 数统计
 	KeyN  int // number of keys/value pairs
 	Depth int // number of levels in B+tree
 
 	// Page size utilization.
+	// 页面大小统计
 	BranchAlloc int // bytes allocated for physical branch pages
 	BranchInuse int // bytes actually used for branch data
 	LeafAlloc   int // bytes allocated for physical leaf pages
 	LeafInuse   int // bytes actually used for leaf data
 
 	// Bucket statistics
+	// 桶统计
 	BucketN           int // total number of buckets including the top bucket
 	InlineBucketN     int // total number on inlined buckets
 	InlineBucketInuse int // bytes used for inlined buckets (also accounted for in LeafInuse)
 }
 
+// 统计合并
 func (s *BucketStats) Add(other BucketStats) {
 	s.BranchPageN += other.BranchPageN
 	s.BranchOverflowN += other.BranchOverflowN
@@ -835,8 +861,10 @@ func (s *BucketStats) Add(other BucketStats) {
 }
 
 // cloneBytes returns a copy of a given slice.
+// 复制
 func cloneBytes(v []byte) []byte {
 	var clone = make([]byte, len(v))
+
 	copy(clone, v)
 	return clone
 }

@@ -17,6 +17,7 @@ import (
 // after mutating data.
 type Cursor struct {
 	bucket *Bucket
+
 	stack  []elemRef
 }
 
@@ -356,6 +357,7 @@ func (c *Cursor) keyValue() ([]byte, []byte, uint32) {
 
 // node returns the node that the cursor is currently positioned on.
 func (c *Cursor) node() *node {
+    // 校验
 	_assert(len(c.stack) > 0, "accessing a node with a zero-length cursor stack")
 
 	// If the top of the stack is a leaf node then just return it.
@@ -372,29 +374,36 @@ func (c *Cursor) node() *node {
 		_assert(!n.isLeaf, "expected branch node")
 		n = n.childAt(int(ref.index))
 	}
+
 	_assert(n.isLeaf, "expected leaf node")
 	return n
 }
 
 // elemRef represents a reference to an element on a given page/node.
 type elemRef struct {
+    // 页 或 节点
 	page  *page
 	node  *node
+
 	index int
 }
 
 // isLeaf returns whether the ref is pointing at a leaf page/node.
+// 判断是否叶子
 func (r *elemRef) isLeaf() bool {
 	if r.node != nil {
 		return r.node.isLeaf
 	}
+
 	return (r.page.flags & leafPageFlag) != 0
 }
 
 // count returns the number of inodes or page elements.
+// 元素大小
 func (r *elemRef) count() int {
 	if r.node != nil {
 		return len(r.node.inodes)
 	}
+
 	return int(r.page.count)
 }
