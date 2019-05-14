@@ -31,6 +31,7 @@ func (c *Cursor) Bucket() *Bucket {
 // The returned key and value are only valid for the life of the transaction.
 func (c *Cursor) First() (key []byte, value []byte) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
+
 	c.stack = c.stack[:0]
 	p, n := c.bucket.pageNode(c.bucket.root)
 	c.stack = append(c.stack, elemRef{page: p, node: n, index: 0})
