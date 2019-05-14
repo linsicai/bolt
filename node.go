@@ -572,6 +572,7 @@ func (n *node) rebalance() {
 	// 校验阈值
 	var threshold = n.bucket.tx.db.pageSize / 4
 	if n.size() > threshold && len(n.inodes) > n.minKeys() {
+	    // 情况良好
 		return
 	}
 
@@ -676,6 +677,7 @@ func (n *node) rebalance() {
 
 // removes a node from the list of in-memory children.
 // This does not affect the inodes.
+// 删除子节点
 func (n *node) removeChild(target *node) {
 	for i, child := range n.children {
 		if child == target {
@@ -687,33 +689,41 @@ func (n *node) removeChild(target *node) {
 
 // dereference causes the node to copy all its inode key/value references to heap memory.
 // This is required when the mmap is reallocated so inodes are not pointing to stale data.
+// 深度负责
 func (n *node) dereference() {
 	if n.key != nil {
+	    // 复制key
 		key := make([]byte, len(n.key))
 		copy(key, n.key)
 		n.key = key
+
 		_assert(n.pgid == 0 || len(n.key) > 0, "dereference: zero-length node key on existing node")
 	}
 
+    // 操作i节点
 	for i := range n.inodes {
 		inode := &n.inodes[i]
 
+        // 复制key
 		key := make([]byte, len(inode.key))
 		copy(key, inode.key)
 		inode.key = key
 		_assert(len(inode.key) > 0, "dereference: zero-length inode key")
 
+        // 复制value
 		value := make([]byte, len(inode.value))
 		copy(value, inode.value)
 		inode.value = value
 	}
 
 	// Recursively dereference children.
+	// 操作子节点
 	for _, child := range n.children {
 		child.dereference()
 	}
 
 	// Update statistics.
+	// 打点
 	n.bucket.tx.stats.NodeDeref++
 }
 
