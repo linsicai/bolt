@@ -75,7 +75,7 @@ func (n *node) size() int {
 // sizeLessThan returns true if the node is less than a given size.
 // This is an optimization to avoid calculating a large node when we only need
 // to know if it fits inside a certain page size.
-// 寻找合适的页大小
+// 校验给的的大小是否合适
 func (n *node) sizeLessThan(v int) bool {
 	sz, elsz := pageHeaderSize, n.pageElementSize()
 
@@ -91,6 +91,7 @@ func (n *node) sizeLessThan(v int) bool {
 }
 
 // pageElementSize returns the size of each page element based on the type of node.
+// 元素大小
 func (n *node) pageElementSize() int {
 	if n.isLeaf {
 		return leafPageElementSize
@@ -681,7 +682,6 @@ func (n *node) dump() {
 
 // 节点列表
 type nodes []*node
-
 func (s nodes) Len() int           { return len(s) }
 func (s nodes) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[j].inodes[0].key) == -1 }
@@ -689,6 +689,7 @@ func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[
 // inode represents an internal node inside of a node.
 // It can be used to point to elements in a page or point
 // to an element which hasn't been added to a page yet.
+// i节点
 type inode struct {
     // 类型
 	flags uint32
@@ -701,4 +702,5 @@ type inode struct {
 	value []byte
 }
 
+// i节点列表
 type inodes []inode

@@ -26,7 +26,7 @@ type Tx struct {
     // 是否可写
 	writable       bool
 
-    // ？？？
+    // 是否非自动提交
 	managed        bool
 
     // 数据库
@@ -34,9 +34,17 @@ type Tx struct {
 
     // 元信息
 	meta           *meta
+
+    // 桶
 	root           Bucket
+
+    // 页表
 	pages          map[pgid]*page
+
+    // 事务统计
 	stats          TxStats
+
+    // 提交函数列表
 	commitHandlers []func()
 
 	// WriteFlag specifies the flag for write-related methods like WriteTo().
@@ -45,6 +53,8 @@ type Tx struct {
 	// By default, the flag is unset, which works well for mostly in-memory
 	// workloads. For databases that are much larger than available RAM,
 	// set the flag to syscall.O_DIRECT to avoid trashing the page cache.
+
+	// 写标记
 	WriteFlag int
 }
 

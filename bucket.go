@@ -54,7 +54,8 @@ type Bucket struct {
 
     // 根节点
 	rootNode *node              // materialized node for the root page.
-	// 节点列表
+
+	// 子节点
 	nodes    map[pgid]*node     // node cache
 
 	// Sets the threshold for filling nodes when they split. By default,
