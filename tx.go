@@ -564,14 +564,17 @@ func (tx *Tx) write() error {
 // writeMeta writes the meta to the disk.
 func (tx *Tx) writeMeta() error {
 	// Create a temporary buffer for the meta page.
+	// 创建buffer，写入元信息
 	buf := make([]byte, tx.db.pageSize)
 	p := tx.db.pageInBuffer(buf, 0)
 	tx.meta.write(p)
 
 	// Write the meta page to file.
+	// 落盘
 	if _, err := tx.db.ops.writeAt(buf, int64(p.id)*int64(tx.db.pageSize)); err != nil {
 		return err
 	}
+	// 同步
 	if !tx.db.NoSync || IgnoreNoSync {
 		if err := fdatasync(tx.db); err != nil {
 			return err
@@ -579,6 +582,7 @@ func (tx *Tx) writeMeta() error {
 	}
 
 	// Update statistics.
+	统计
 	tx.stats.Write++
 
 	return nil
@@ -588,6 +592,7 @@ func (tx *Tx) writeMeta() error {
 // If page has been written to then a temporary buffered page is returned.
 func (tx *Tx) page(id pgid) *page {
 	// Check the dirty pages first.
+	// 在脏页里面找
 	if tx.pages != nil {
 		if p, ok := tx.pages[id]; ok {
 			return p
@@ -595,6 +600,7 @@ func (tx *Tx) page(id pgid) *page {
 	}
 
 	// Otherwise return directly from the mmap.
+	// 从mmap 中找
 	return tx.db.page(id)
 }
 
@@ -617,6 +623,7 @@ func (tx *Tx) forEachPage(pgid pgid, depth int, fn func(*page, int)) {
 // Page returns page information for a given page number.
 // This is only safe for concurrent use when used by a writable transaction.
 func (tx *Tx) Page(id int) (*PageInfo, error) {
+    // 异常检测
 	if tx.db == nil {
 		return nil, ErrTxClosed
 	} else if pgid(id) >= tx.meta.pgid {
@@ -624,6 +631,7 @@ func (tx *Tx) Page(id int) (*PageInfo, error) {
 	}
 
 	// Build the page info.
+	// 加载页信息
 	p := tx.db.page(pgid(id))
 	info := &PageInfo{
 		ID:            id,
@@ -632,6 +640,7 @@ func (tx *Tx) Page(id int) (*PageInfo, error) {
 	}
 
 	// Determine the type (or if it's free).
+	// 判断页类型
 	if tx.db.freelist.freed(pgid(id)) {
 		info.Type = "free"
 	} else {
@@ -644,26 +653,32 @@ func (tx *Tx) Page(id int) (*PageInfo, error) {
 // TxStats represents statistics about the actions performed by the transaction.
 type TxStats struct {
 	// Page statistics.
+	// 页统计
 	PageCount int // number of page allocations
 	PageAlloc int // total bytes allocated
 
 	// Cursor statistics.
+	// cursor 统计
 	CursorCount int // number of cursors created
 
 	// Node statistics
+	// node 统计
 	NodeCount int // number of node allocations
 	NodeDeref int // number of node dereferences
 
 	// Rebalance statistics.
+	// 平衡统计
 	Rebalance     int           // number of node rebalances
 	RebalanceTime time.Duration // total time spent rebalancing
 
 	// Split/Spill statistics.
+	// 分裂统计
 	Split     int           // number of nodes split
 	Spill     int           // number of nodes spilled
 	SpillTime time.Duration // total time spent spilling
 
 	// Write statistics.
+	// 罗盘统计
 	Write     int           // number of writes performed
 	WriteTime time.Duration // total time spent writing to disk
 }

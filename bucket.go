@@ -489,6 +489,7 @@ func (b *Bucket) Stats() BucketStats {
 	// 遍历页面
 	b.forEachPage(func(p *page, depth int) {
 		if (p.flags & leafPageFlag) != 0 {
+		    // 叶子
 			s.KeyN += int(p.count)
 
 			// used totals the used bytes for the page
@@ -496,6 +497,7 @@ func (b *Bucket) Stats() BucketStats {
 
 			if p.count != 0 {
 				// If page has any elements, add all element headers.
+				// 前n - 1 个元素头大小
 				used += leafPageElementSize * int(p.count-1)
 
 				// Add all element key, value sizes.
@@ -503,12 +505,14 @@ func (b *Bucket) Stats() BucketStats {
 				// of the last element's key/value equals to the total of the sizes
 				// of all previous elements' keys and values.
 				// It also includes the last element's header.
+				// 数据区大小
 				lastElement := p.leafPageElement(p.count - 1)
 				used += int(lastElement.pos + lastElement.ksize + lastElement.vsize)
 			}
 
 			if b.root == 0 {
 				// For inlined bucket just update the inline stats
+				// 内联页
 				s.InlineBucketInuse += used
 			} else {
 				// For non-inlined bucket update all the leaf stats
@@ -519,6 +523,7 @@ func (b *Bucket) Stats() BucketStats {
 				// Collect stats from sub-buckets.
 				// Do that by iterating over all element headers
 				// looking for the ones with the bucketLeafFlag.
+				// 遍历所有叶子元素，合并统计
 				for i := uint16(0); i < p.count; i++ {
 					e := p.leafPageElement(i)
 					if (e.flags & bucketLeafFlag) != 0 {
@@ -529,17 +534,23 @@ func (b *Bucket) Stats() BucketStats {
 				}
 			}
 		} else if (p.flags & branchPageFlag) != 0 {
+		    // 分支页
 			s.BranchPageN++
+
+			// 找最后一个元素
 			lastElement := p.branchPageElement(p.count - 1)
 
 			// used totals the used bytes for the page
 			// Add header and all element headers.
+			// 结构区大小
 			used := pageHeaderSize + (branchPageElementSize * int(p.count-1))
 
 			// Add size of all keys and values.
 			// Again, use the fact that last element's position equals to
 			// the total of key, value sizes of all previous elements.
+			// 数据区大小
 			used += int(lastElement.pos + lastElement.ksize)
+
 			s.BranchInuse += used
 			s.BranchOverflowN += int(p.overflow)
 		}
@@ -580,28 +591,36 @@ func (b *Bucket) forEachPage(fn func(*page, int)) {
 func (b *Bucket) forEachPageNode(fn func(*page, *node, int)) {
 	// If we have an inline page or root node then just use that.
 	if b.page != nil {
+	    // 内联页
 		fn(b.page, nil, 0)
 		return
 	}
+
 	b._forEachPageNode(b.root, 0, fn)
 }
 
 func (b *Bucket) _forEachPageNode(pgid pgid, depth int, fn func(*page, *node, int)) {
+    // 找page 和 node
 	var p, n = b.pageNode(pgid)
 
 	// Execute function.
+	// 根节点
 	fn(p, n, depth)
 
 	// Recursively loop over children.
 	if p != nil {
+	    // 是页
 		if (p.flags & branchPageFlag) != 0 {
+		    // 分支页，遍历所有页
 			for i := 0; i < int(p.count); i++ {
 				elem := p.branchPageElement(uint16(i))
 				b._forEachPageNode(elem.pgid, depth+1, fn)
 			}
 		}
 	} else {
+	    // 不是页
 		if !n.isLeaf {
+		    // 遍历所有inode
 			for _, inode := range n.inodes {
 				b._forEachPageNode(inode.pgid, depth+1, fn)
 			}
@@ -612,20 +631,24 @@ func (b *Bucket) _forEachPageNode(pgid pgid, depth int, fn func(*page, *node, in
 // spill writes all the nodes for this bucket to dirty pages.
 func (b *Bucket) spill() error {
 	// Spill all child buckets first.
+	// 操作所有子桶
 	for name, child := range b.buckets {
 		// If the child bucket is small enough and it has no child buckets then
 		// write it inline into the parent bucket's page. Otherwise spill it
 		// like a normal bucket and make the parent value a pointer to the page.
 		var value []byte
 		if child.inlineable() {
+		    // 内联，值为内联信息
 			child.free()
 			value = child.write()
 		} else {
+		    // 分裂子桶
 			if err := child.spill(); err != nil {
 				return err
 			}
 
 			// Update the child bucket header in this bucket.
+			// 值为bucket 信息
 			value = make([]byte, unsafe.Sizeof(bucket{}))
 			var bucket = (*bucket)(unsafe.Pointer(&value[0]))
 			*bucket = *child.bucket
@@ -637,6 +660,7 @@ func (b *Bucket) spill() error {
 		}
 
 		// Update parent node.
+		// 更新父节点nodes
 		var c = b.Cursor()
 		k, _, flags := c.seek([]byte(name))
 		if !bytes.Equal([]byte(name), k) {
@@ -650,21 +674,25 @@ func (b *Bucket) spill() error {
 
 	// Ignore if there's not a materialized root node.
 	if b.rootNode == nil {
+	    // 无根
 		return nil
 	}
 
 	// Spill nodes.
+	// 根节点分裂
 	if err := b.rootNode.spill(); err != nil {
 		return err
 	}
 	b.rootNode = b.rootNode.root()
 
 	// Update the root node for this bucket.
+	// 更新根节点pgid
 	if b.rootNode.pgid >= b.tx.meta.pgid {
 		panic(fmt.Sprintf("pgid (%d) above high water mark (%d)", b.rootNode.pgid, b.tx.meta.pgid))
 	}
 	b.root = b.rootNode.pgid
 
+    // 成功
 	return nil
 }
 
@@ -675,6 +703,7 @@ func (b *Bucket) inlineable() bool {
 
 	// Bucket must only contain a single leaf node.
 	if n == nil || !n.isLeaf {
+	    // 必须是个叶子node
 		return false
 	}
 
@@ -685,8 +714,10 @@ func (b *Bucket) inlineable() bool {
 		size += leafPageElementSize + len(inode.key) + len(inode.value)
 
 		if inode.flags&bucketLeafFlag != 0 {
+		    // inode 类型不对
 			return false
 		} else if size > b.maxInlineBucketSize() {
+		    // 大小过大了
 			return false
 		}
 	}
@@ -702,14 +733,17 @@ func (b *Bucket) maxInlineBucketSize() int {
 // write allocates and writes a bucket to a byte slice.
 func (b *Bucket) write() []byte {
 	// Allocate the appropriate size.
+	// 申请空间
 	var n = b.rootNode
 	var value = make([]byte, bucketHeaderSize+n.size())
 
 	// Write a bucket header.
+	// 写bucket 头
 	var bucket = (*bucket)(unsafe.Pointer(&value[0]))
 	*bucket = *b.bucket
 
 	// Convert byte slice to a fake page and write the root node.
+	// 写node
 	var p = (*page)(unsafe.Pointer(&value[bucketHeaderSize]))
 	n.write(p)
 
@@ -718,9 +752,12 @@ func (b *Bucket) write() []byte {
 
 // rebalance attempts to balance all nodes.
 func (b *Bucket) rebalance() {
+    // 节点平衡
 	for _, n := range b.nodes {
 		n.rebalance()
 	}
+
+    // 子桶平衡
 	for _, child := range b.buckets {
 		child.rebalance()
 	}
@@ -767,9 +804,11 @@ func (b *Bucket) node(pgid pgid, parent *node) *node {
 // free recursively frees all pages in the bucket.
 func (b *Bucket) free() {
 	if b.root == 0 {
+	    // 无资源释放
 		return
 	}
 
+    // 释放所有页
 	var tx = b.tx
 	b.forEachPageNode(func(p *page, n *node, _ int) {
 		if p != nil {
@@ -778,15 +817,18 @@ func (b *Bucket) free() {
 			n.free()
 		}
 	})
+
 	b.root = 0
 }
 
 // dereference removes all references to the old mmap.
 func (b *Bucket) dereference() {
+    // 根节点深度复制
 	if b.rootNode != nil {
 		b.rootNode.root().dereference()
 	}
 
+    // 子桶深度复制
 	for _, child := range b.buckets {
 		child.dereference()
 	}
@@ -798,16 +840,22 @@ func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	// Inline buckets have a fake page embedded in their value so treat them
 	// differently. We'll return the rootNode (if available) or the fake page.
 	if b.root == 0 {
+	    // 内联页，特殊对待，不应该有pgid
 		if id != 0 {
 			panic(fmt.Sprintf("inline bucket non-zero page access(2): %d != 0", id))
 		}
+
+        // 返回根节点
 		if b.rootNode != nil {
 			return nil, b.rootNode
 		}
+
+        // 返回内联页
 		return b.page, nil
 	}
 
 	// Check the node cache for non-inline buckets.
+	// 找node 缓存
 	if b.nodes != nil {
 		if n := b.nodes[id]; n != nil {
 			return nil, n
@@ -815,6 +863,7 @@ func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	}
 
 	// Finally lookup the page from the transaction if no node is materialized.
+	// 从事务中读取
 	return b.tx.page(id), nil
 }
 

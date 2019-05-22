@@ -689,7 +689,7 @@ func (n *node) removeChild(target *node) {
 
 // dereference causes the node to copy all its inode key/value references to heap memory.
 // This is required when the mmap is reallocated so inodes are not pointing to stale data.
-// 深度负责
+// 深度复制
 func (n *node) dereference() {
 	if n.key != nil {
 	    // 复制key
