@@ -59,11 +59,13 @@ type Tx struct {
 }
 
 // init initializes the transaction.
+// 初始化事务
 func (tx *Tx) init(db *DB) {
 	tx.db = db
 	tx.pages = nil
 
 	// Copy the meta page since it can be changed by the writer.
+	// 复制元信息
 	tx.meta = &meta{}
 	db.meta().copy(tx.meta)
 
@@ -73,6 +75,7 @@ func (tx *Tx) init(db *DB) {
 	*tx.root.bucket = tx.meta.root
 
 	// Increment the transaction id and add a page cache for writable transactions.
+	// 可写事务
 	if tx.writable {
 		tx.pages = make(map[pgid]*page)
 		tx.meta.txid += txid(1)
@@ -161,6 +164,7 @@ func (tx *Tx) OnCommit(fn func()) {
 // called on a read-only transaction.
 func (tx *Tx) Commit() error {
 	_assert(!tx.managed, "managed tx commit not allowed")
+	// 异常检测
 	if tx.db == nil {
 		return ErrTxClosed
 	} else if !tx.writable {
@@ -170,6 +174,7 @@ func (tx *Tx) Commit() error {
 	// TODO(benbjohnson): Use vectorized I/O to write out dirty pages.
 
 	// Rebalance nodes which have had deletions.
+	// 平衡
 	var startTime = time.Now()
 	tx.root.rebalance()
 	if tx.stats.Rebalance > 0 {
@@ -177,8 +182,10 @@ func (tx *Tx) Commit() error {
 	}
 
 	// spill data onto dirty pages.
+	// 分裂
 	startTime = time.Now()
 	if err := tx.root.spill(); err != nil {
+	    // 错误回滚
 		tx.rollback()
 		return err
 	}
@@ -256,10 +263,13 @@ func (tx *Tx) Commit() error {
 // Rollback closes the transaction and ignores all previous updates. Read-only
 // transactions must be rolled back and not committed.
 func (tx *Tx) Rollback() error {
+    // 错误检测
 	_assert(!tx.managed, "managed tx rollback not allowed")
 	if tx.db == nil {
 		return ErrTxClosed
 	}
+
+    // 回滚
 	tx.rollback()
 	return nil
 }
@@ -268,28 +278,37 @@ func (tx *Tx) rollback() {
 	if tx.db == nil {
 		return
 	}
+
+    // 释放资源
 	if tx.writable {
 		tx.db.freelist.rollback(tx.meta.txid)
 		tx.db.freelist.reload(tx.db.page(tx.db.meta().freelist))
 	}
+
+    // 关闭事务
 	tx.close()
 }
 
 func (tx *Tx) close() {
+    // 异常检测
 	if tx.db == nil {
 		return
 	}
+
 	if tx.writable {
 		// Grab freelist stats.
+		// 统计
 		var freelistFreeN = tx.db.freelist.free_count()
 		var freelistPendingN = tx.db.freelist.pending_count()
 		var freelistAlloc = tx.db.freelist.size()
 
 		// Remove transaction ref & writer lock.
+		// 释放事务
 		tx.db.rwtx = nil
 		tx.db.rwlock.Unlock()
 
 		// Merge statistics.
+		// 合并统计
 		tx.db.statlock.Lock()
 		tx.db.stats.FreePageN = freelistFreeN
 		tx.db.stats.PendingPageN = freelistPendingN
@@ -298,10 +317,12 @@ func (tx *Tx) close() {
 		tx.db.stats.TxStats.add(&tx.stats)
 		tx.db.statlock.Unlock()
 	} else {
+	    // 移除事务
 		tx.db.removeTx(tx)
 	}
 
 	// Clear all references.
+	// 清理引用
 	tx.db = nil
 	tx.meta = nil
 	tx.root = Bucket{tx: tx}
@@ -321,6 +342,7 @@ func (tx *Tx) Copy(w io.Writer) error {
 // If err == nil then exactly tx.Size() bytes will be written into the writer.
 func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 	// Attempt to open reader with WriteFlag
+	// 打开文件
 	f, err := os.OpenFile(tx.db.path, os.O_RDONLY|tx.WriteFlag, 0)
 	if err != nil {
 		return 0, err
@@ -328,12 +350,14 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 	defer func() { _ = f.Close() }()
 
 	// Generate a meta page. We use the same page data for both meta pages.
+	// 创建meta 页
 	buf := make([]byte, tx.db.pageSize)
 	page := (*page)(unsafe.Pointer(&buf[0]))
 	page.flags = metaPageFlag
 	*page.meta() = *tx.meta
 
 	// Write meta 0.
+	// 写meta 0
 	page.id = 0
 	page.meta().checksum = page.meta().sum64()
 	nn, err := w.Write(buf)
@@ -343,6 +367,7 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 	}
 
 	// Write meta 1 with a lower transaction id.
+	// 写meta 1
 	page.id = 1
 	page.meta().txid -= 1
 	page.meta().checksum = page.meta().sum64()
@@ -353,17 +378,20 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 	}
 
 	// Move past the meta pages in the file.
+	// 移动文件指针
 	if _, err := f.Seek(int64(tx.db.pageSize*2), os.SEEK_SET); err != nil {
 		return n, fmt.Errorf("seek: %s", err)
 	}
 
 	// Copy data pages.
+	// 写数据
 	wn, err := io.CopyN(w, f, tx.Size()-int64(tx.db.pageSize*2))
 	n += wn
 	if err != nil {
 		return n, err
 	}
 
+    // 结束
 	return n, f.Close()
 }
 
@@ -371,16 +399,19 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 // A reader transaction is maintained during the copy so it is safe to continue
 // using the database while a copy is in progress.
 func (tx *Tx) CopyFile(path string, mode os.FileMode) error {
+    // 打开文件
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
 
+    // 复制过去
 	err = tx.Copy(f)
 	if err != nil {
 		_ = f.Close()
 		return err
 	}
+
 	return f.Close()
 }
 
@@ -392,6 +423,7 @@ func (tx *Tx) CopyFile(path string, mode os.FileMode) error {
 // because of caching. This overhead can be removed if running on a read-only
 // transaction, however, it is not safe to execute other writer transactions at
 // the same time.
+// 一致性校验
 func (tx *Tx) Check() <-chan error {
 	ch := make(chan error)
 	go tx.check(ch)
@@ -400,6 +432,7 @@ func (tx *Tx) Check() <-chan error {
 
 func (tx *Tx) check(ch chan error) {
 	// Check if any pages are double freed.
+	// 检验页释放重复释放
 	freed := make(map[pgid]bool)
 	all := make([]pgid, tx.db.freelist.count())
 	tx.db.freelist.copyall(all)
@@ -411,6 +444,7 @@ func (tx *Tx) check(ch chan error) {
 	}
 
 	// Track every reachable page.
+	// 检验页
 	reachable := make(map[pgid]*page)
 	reachable[0] = tx.page(0) // meta0
 	reachable[1] = tx.page(1) // meta1
@@ -419,9 +453,11 @@ func (tx *Tx) check(ch chan error) {
 	}
 
 	// Recursively check buckets.
+	// 递归校验bucket
 	tx.checkBucket(&tx.root, reachable, freed, ch)
 
 	// Ensure all pages below high water mark are either reachable or freed.
+	// 综合判定
 	for i := pgid(0); i < tx.meta.pgid; i++ {
 		_, isReachable := reachable[i]
 		if !isReachable && !freed[i] {
@@ -436,16 +472,19 @@ func (tx *Tx) check(ch chan error) {
 func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bool, ch chan error) {
 	// Ignore inline buckets.
 	if b.root == 0 {
+	    // 忽略内联页
 		return
 	}
 
 	// Check every page used by this bucket.
+	// 遍历每个页
 	b.tx.forEachPage(b.root, 0, func(p *page, _ int) {
 		if p.id > tx.meta.pgid {
 			ch <- fmt.Errorf("page %d: out of bounds: %d", int(p.id), int(b.tx.meta.pgid))
 		}
 
 		// Ensure each page is only referenced once.
+		// 只使用一次
 		for i := pgid(0); i <= pgid(p.overflow); i++ {
 			var id = p.id + i
 			if _, ok := reachable[id]; ok {
@@ -455,6 +494,7 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 		}
 
 		// We should only encounter un-freed leaf and branch pages.
+		// 
 		if freed[p.id] {
 			ch <- fmt.Errorf("page %d: reachable freed", int(p.id))
 		} else if (p.flags&branchPageFlag) == 0 && (p.flags&leafPageFlag) == 0 {
@@ -463,6 +503,7 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 	})
 
 	// Check each bucket within this bucket.
+	// 遍历所有bucket
 	_ = b.ForEach(func(k, v []byte) error {
 		if child := b.Bucket(k); child != nil {
 			tx.checkBucket(child, reachable, freed, ch)
@@ -473,15 +514,18 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 
 // allocate returns a contiguous block of memory starting at a given page.
 func (tx *Tx) allocate(count int) (*page, error) {
+    // 申请资源
 	p, err := tx.db.allocate(count)
 	if err != nil {
 		return nil, err
 	}
 
 	// Save to our page cache.
+	// 记录页
 	tx.pages[p.id] = p
 
 	// Update statistics.
+	// 统计
 	tx.stats.PageCount++
 	tx.stats.PageAlloc += count * tx.db.pageSize
 
@@ -491,6 +535,7 @@ func (tx *Tx) allocate(count int) (*page, error) {
 // write writes any dirty pages to disk.
 func (tx *Tx) write() error {
 	// Sort pages by id.
+	// 提取出页
 	pages := make(pages, 0, len(tx.pages))
 	for _, p := range tx.pages {
 		pages = append(pages, p)
@@ -500,6 +545,7 @@ func (tx *Tx) write() error {
 	sort.Sort(pages)
 
 	// Write pages to disk in order.
+	// 遍历所有页
 	for _, p := range pages {
 		size := (int(p.overflow) + 1) * tx.db.pageSize
 		offset := int64(p.id) * int64(tx.db.pageSize)
@@ -535,6 +581,7 @@ func (tx *Tx) write() error {
 	}
 
 	// Ignore file sync if flag is set on DB.
+	// 刷盘
 	if !tx.db.NoSync || IgnoreNoSync {
 		if err := fdatasync(tx.db); err != nil {
 			return err
@@ -542,6 +589,7 @@ func (tx *Tx) write() error {
 	}
 
 	// Put small pages back to page pool.
+	// 释放回池中
 	for _, p := range pages {
 		// Ignore page sizes over 1 page.
 		// These are allocated using make() instead of the page pool.

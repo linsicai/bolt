@@ -15,7 +15,7 @@ import (
 )
 
 // The largest step that can be taken when remapping the mmap.
-// mmap 大小
+// mmap append 大小，每次1GB
 const maxMmapStep = 1 << 30 // 1GB
 
 // The data file format version.
@@ -30,7 +30,7 @@ const magic uint32 = 0xED0CDAED
 // syncing changes to a file.  This is required as some operating systems,
 // such as OpenBSD, do not have a unified buffer cache (UBC) and writes
 // must be synchronized using the msync(2) syscall.
-// 一些特殊处理
+// 这个系统强制fsync
 const IgnoreNoSync = runtime.GOOS == "openbsd"
 
 // Default values if not set in a DB instance.
@@ -38,6 +38,7 @@ const IgnoreNoSync = runtime.GOOS == "openbsd"
 const (
 	// 批量提交最大大小
 	DefaultMaxBatchSize int = 1000
+
 	// 批量提交延时
 	DefaultMaxBatchDelay = 10 * time.Millisecond
 	// ？
