@@ -9,31 +9,15 @@ import (
 
 // node represents an in-memory, deserialized page.
 type node struct {
-	// 桶
-	bucket *Bucket
-
-	// 是否叶子
-	isLeaf bool
-
-	// 是否不平衡
-	unbalanced bool
-
-	// ？
-	spilled bool
-
-	// 第一个key
-	key []byte
-
-	// 页ID
-	pgid pgid
-
-	// 父节点
-	parent *node
-	// 子节点列表
-	children nodes
-
-	// 内部节点列表
-	inodes inodes
+	bucket 		*Bucket // 桶
+	isLeaf 		bool 	// 是否叶子
+	unbalanced 	bool 	// 是否不平衡
+	spilled 	bool 	// 是否已分裂
+	key 		[]byte 	// 第一个key
+	pgid 		pgid 	// 页ID
+	parent 		*node 	// 父节点
+	children 	nodes 	// 子节点列表
+	inodes 		inodes 	// 内部节点列表
 }
 
 // root returns the top-level node this node is attached to.
@@ -370,6 +354,7 @@ func (n *node) write(p *page) {
 // split breaks up a node into multiple smaller nodes, if appropriate.
 // This should only be called from the spill() function.
 // 分裂
+
 func (n *node) split(pageSize int) []*node {
 	var nodes []*node
 
@@ -774,13 +759,8 @@ func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[
 // to an element which hasn't been added to a page yet.
 // i节点
 type inode struct {
-	// 类型
-	flags uint32
-
-	// 页ID
-	pgid pgid
-
-	// kv
+	flags uint32 	// 类型
+	pgid pgid 		// 页ID
 	key   []byte
 	value []byte
 }

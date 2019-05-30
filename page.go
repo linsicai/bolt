@@ -43,20 +43,11 @@ const (
 type pgid uint64
 
 type page struct {
-	// ID
-	id pgid
-
-	// 类型
-	flags uint16
-
-	// 元素数目，最大64K
-	count uint16
-
-	// 容量
-	overflow uint32
-
-	// 数据区
-	ptr uintptr
+	id       pgid    // ID，uint64
+	flags    uint16  // 类型
+	count    uint16  // 元素数目，最大64K
+	overflow uint32  // 容量
+	ptr      uintptr // 数据区
 }
 
 // typ returns a human readable page type string used for debugging.
@@ -87,6 +78,7 @@ func (p *page) leafPageElement(index uint16) *leafPageElement {
 	n := &((*[0x7FFFFFF]leafPageElement)(unsafe.Pointer(&p.ptr)))[index]
 	return n
 }
+
 // leafPageElements retrieves a list of leaf nodes.
 func (p *page) leafPageElements() []leafPageElement {
 	if p.count == 0 {
@@ -101,6 +93,7 @@ func (p *page) leafPageElements() []leafPageElement {
 func (p *page) branchPageElement(index uint16) *branchPageElement {
 	return &((*[0x7FFFFFF]branchPageElement)(unsafe.Pointer(&p.ptr)))[index]
 }
+
 // branchPageElements retrieves a list of branch nodes.
 func (p *page) branchPageElements() []branchPageElement {
 	if p.count == 0 {
@@ -119,6 +112,7 @@ func (p *page) hexdump(n int) {
 
 // 页表
 type pages []*page
+
 func (s pages) Len() int           { return len(s) }
 func (s pages) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
@@ -126,14 +120,9 @@ func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 // branchPageElement represents a node on a branch page.
 // 分支元素
 type branchPageElement struct {
-	// 位置
-	pos uint32
-
-	// key 大小
-	ksize uint32
-
-    // 页ID
-	pgid pgid
+	pos   uint32 // 位置
+	ksize uint32 // key 大小
+	pgid  pgid   // 页ID
 }
 
 // key returns a byte slice of the node key.
@@ -146,17 +135,10 @@ func (n *branchPageElement) key() []byte {
 // leafPageElement represents a node on a leaf page.
 // 叶子
 type leafPageElement struct {
-	// 类型
-	flags uint32
-
-	// 位置
-	pos uint32
-
-	// key 大小
-	ksize uint32
-
-	// 值大小
-	vsize uint32
+	flags uint32 // 类型
+	pos   uint32 // 位置
+	ksize uint32 // key 大小
+	vsize uint32 // 值大小
 }
 
 // key returns a byte slice of the node key.
@@ -192,6 +174,7 @@ type PageInfo struct {
 
 // 页ID 列表
 type pgids []pgid
+
 func (s pgids) Len() int           { return len(s) }
 func (s pgids) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pgids) Less(i, j int) bool { return s[i] < s[j] }

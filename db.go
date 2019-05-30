@@ -147,6 +147,44 @@ type DB struct {
 	// 只读标记
 	readOnly bool
 }
+type DB struct {
+	path     string   // 路径
+	file     *os.File // 文件
+	lockfile *os.File // windows only
+
+	dataref []byte            // mmap'ed readonly, write throws SEGV
+	data    *[maxMapSize]byte // 数据
+	datasz  int               // 数据大小
+	filesz  int               // current on disk file size
+
+	meta0    *meta // 元信息
+	meta1    *meta // 元信息
+	pageSize int   // 页大小
+	opened   bool  // 打开标记
+
+	rwtx     *Tx       // 写事务
+	txs      []*Tx     // 事务列表
+	freelist *freelist // 空闲列表
+	stats    Stats     // 统计
+
+	pagePool sync.Pool // 页池
+
+	batchMu sync.Mutex // 批量锁
+	batch   *batch     // 批量
+
+	// 锁
+	rwlock   sync.Mutex   // Allows only one writer at a time.
+	metalock sync.Mutex   // Protects meta page access.
+	mmaplock sync.RWMutex // Protects mmap access during remapping.
+	statlock sync.RWMutex // Protects stats access.
+
+	// 写文件
+	ops struct {
+		writeAt func(b []byte, off int64) (n int, err error)
+	}
+
+	readOnly bool
+}
 
 // Path returns the path to currently open database file.
 func (db *DB) Path() string {

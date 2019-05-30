@@ -23,28 +23,28 @@ type txid uint64
 // quickly grow.
 // 事务
 type Tx struct {
-    // 是否可写
-	writable       bool
+	// 是否可写
+	writable bool
 
-    // 是否非自动提交
-	managed        bool
+	// 是否非自动提交
+	managed bool
 
-    // 数据库
-	db             *DB
+	// 数据库
+	db *DB
 
-    // 元信息
-	meta           *meta
+	// 元信息
+	meta *meta
 
-    // 桶
-	root           Bucket
+	// 桶
+	root Bucket
 
-    // 页表
-	pages          map[pgid]*page
+	// 页表
+	pages map[pgid]*page
 
-    // 事务统计
-	stats          TxStats
+	// 事务统计
+	stats TxStats
 
-    // 提交函数列表
+	// 提交函数列表
 	commitHandlers []func()
 
 	// WriteFlag specifies the flag for write-related methods like WriteTo().
@@ -56,6 +56,18 @@ type Tx struct {
 
 	// 写标记
 	WriteFlag int
+}
+type Tx struct {
+	writable bool // 是否可写
+	managed  bool // 是否非自动提交
+
+	db             *DB            // 数据库
+	meta           *meta          // 元信息
+	root           Bucket         // 桶
+	pages          map[pgid]*page // 页表
+	stats          TxStats        // 事务统计
+	commitHandlers []func()       // 提交函数列表
+	WriteFlag      int            // 写标记
 }
 
 // init initializes the transaction.
@@ -185,7 +197,7 @@ func (tx *Tx) Commit() error {
 	// 分裂
 	startTime = time.Now()
 	if err := tx.root.spill(); err != nil {
-	    // 错误回滚
+		// 错误回滚
 		tx.rollback()
 		return err
 	}
@@ -263,13 +275,13 @@ func (tx *Tx) Commit() error {
 // Rollback closes the transaction and ignores all previous updates. Read-only
 // transactions must be rolled back and not committed.
 func (tx *Tx) Rollback() error {
-    // 错误检测
+	// 错误检测
 	_assert(!tx.managed, "managed tx rollback not allowed")
 	if tx.db == nil {
 		return ErrTxClosed
 	}
 
-    // 回滚
+	// 回滚
 	tx.rollback()
 	return nil
 }
@@ -279,18 +291,18 @@ func (tx *Tx) rollback() {
 		return
 	}
 
-    // 释放资源
+	// 释放资源
 	if tx.writable {
 		tx.db.freelist.rollback(tx.meta.txid)
 		tx.db.freelist.reload(tx.db.page(tx.db.meta().freelist))
 	}
 
-    // 关闭事务
+	// 关闭事务
 	tx.close()
 }
 
 func (tx *Tx) close() {
-    // 异常检测
+	// 异常检测
 	if tx.db == nil {
 		return
 	}
@@ -317,7 +329,7 @@ func (tx *Tx) close() {
 		tx.db.stats.TxStats.add(&tx.stats)
 		tx.db.statlock.Unlock()
 	} else {
-	    // 移除事务
+		// 移除事务
 		tx.db.removeTx(tx)
 	}
 
@@ -391,7 +403,7 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 		return n, err
 	}
 
-    // 结束
+	// 结束
 	return n, f.Close()
 }
 
@@ -399,13 +411,13 @@ func (tx *Tx) WriteTo(w io.Writer) (n int64, err error) {
 // A reader transaction is maintained during the copy so it is safe to continue
 // using the database while a copy is in progress.
 func (tx *Tx) CopyFile(path string, mode os.FileMode) error {
-    // 打开文件
+	// 打开文件
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
 
-    // 复制过去
+	// 复制过去
 	err = tx.Copy(f)
 	if err != nil {
 		_ = f.Close()
@@ -472,7 +484,7 @@ func (tx *Tx) check(ch chan error) {
 func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bool, ch chan error) {
 	// Ignore inline buckets.
 	if b.root == 0 {
-	    // 忽略内联页
+		// 忽略内联页
 		return
 	}
 
@@ -494,7 +506,7 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 		}
 
 		// We should only encounter un-freed leaf and branch pages.
-		// 
+		//
 		if freed[p.id] {
 			ch <- fmt.Errorf("page %d: reachable freed", int(p.id))
 		} else if (p.flags&branchPageFlag) == 0 && (p.flags&leafPageFlag) == 0 {
@@ -514,7 +526,7 @@ func (tx *Tx) checkBucket(b *Bucket, reachable map[pgid]*page, freed map[pgid]bo
 
 // allocate returns a contiguous block of memory starting at a given page.
 func (tx *Tx) allocate(count int) (*page, error) {
-    // 申请资源
+	// 申请资源
 	p, err := tx.db.allocate(count)
 	if err != nil {
 		return nil, err
@@ -630,7 +642,7 @@ func (tx *Tx) writeMeta() error {
 	}
 
 	// Update statistics.
-	统计
+	// 统计
 	tx.stats.Write++
 
 	return nil
@@ -671,7 +683,7 @@ func (tx *Tx) forEachPage(pgid pgid, depth int, fn func(*page, int)) {
 // Page returns page information for a given page number.
 // This is only safe for concurrent use when used by a writable transaction.
 func (tx *Tx) Page(id int) (*PageInfo, error) {
-    // 异常检测
+	// 异常检测
 	if tx.db == nil {
 		return nil, ErrTxClosed
 	} else if pgid(id) >= tx.meta.pgid {
