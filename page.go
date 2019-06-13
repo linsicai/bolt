@@ -67,7 +67,7 @@ func (p *page) typ() string {
 }
 
 // meta returns a pointer to the metadata section of the page.
-// 云信息页
+// 元信息页
 func (p *page) meta() *meta {
 	return (*meta)(unsafe.Pointer(&p.ptr))
 }
